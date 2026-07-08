@@ -261,3 +261,17 @@ export const listReports = (operationId?: number) =>
   apiGet<ReportRow[]>(`/reports${operationId ? `?operationId=${operationId}` : ''}`);
 export const annulReport = (reportId: number, reason: string, comment?: string) =>
   apiJson<ReportRow>(`/reports/${reportId}/annul`, 'POST', { reason, comment });
+
+export async function openReportPdf(reportId: number): Promise<void> {
+  const res = await fetch(`${API}/reports/${reportId}/pdf`, { headers: authHeaders() });
+  if (res.status === 401) {
+    clearSession();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return;
+  }
+  if (!res.ok) throw new Error('No se pudo generar el PDF');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

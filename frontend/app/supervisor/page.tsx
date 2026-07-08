@@ -6,6 +6,7 @@ import Shell from '@/components/shell';
 import {
   getSupervisorDashboard,
   annulReport,
+  openReportPdf,
   API_URL,
   type DashboardData,
   type ReportRow,
@@ -128,18 +129,28 @@ export default function SupervisorPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  {(r.status === 'FINALIZADO' || r.status === 'CON_DANO') && (
-                    <button
-                      onClick={() => {
-                        setAnnulTarget(r);
-                        setReason('');
-                        setError('');
-                      }}
-                      className="text-[#C8102E] hover:underline"
-                    >
-                      Anular
-                    </button>
-                  )}
+                  <div className="flex justify-end gap-3">
+                    {r.status !== 'BORRADOR' && (
+                      <button
+                        onClick={() => openReportPdf(r.id).catch(() => {})}
+                        className="text-[#0B3D6B] hover:underline"
+                      >
+                        PDF
+                      </button>
+                    )}
+                    {(r.status === 'FINALIZADO' || r.status === 'CON_DANO') && (
+                      <button
+                        onClick={() => {
+                          setAnnulTarget(r);
+                          setReason('');
+                          setError('');
+                        }}
+                        className="text-[#C8102E] hover:underline"
+                      >
+                        Anular
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

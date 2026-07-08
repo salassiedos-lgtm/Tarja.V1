@@ -13,6 +13,7 @@ import { AccessoriesModule } from './accessories/accessories.module';
 import { ImportsModule } from './imports/imports.module';
 import { TarjaModule } from './tarja/tarja.module';
 import { ReportsModule } from './reports/reports.module';
+import { PdfModule } from './pdf/pdf.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -28,6 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ImportsModule,
     TarjaModule,
     ReportsModule,
+    PdfModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
