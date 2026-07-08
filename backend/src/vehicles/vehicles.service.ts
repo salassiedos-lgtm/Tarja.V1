@@ -102,4 +102,37 @@ export class VehiclesService {
 
     return { deleted: true, vin: vehicle.vin };
   }
+
+  /** Avance por contenedor. Solo para el panel del supervisor. */
+  async containerProgress(operationId: number) {
+    const rows = await this.prisma.vehicle.groupBy({
+      by: ['containerNumber', 'status'],
+      where: { operationId, containerNumber: { not: null } },
+      _count: { _all: true },
+    });
+
+    const byContainer = new Map<string, Record<string, number>>();
+    for (const r of rows) {
+      const key = r.containerNumber!;
+      const entry = byContainer.get(key) ?? {};
+      entry[r.status] = r._count._all;
+      byContainer.set(key, entry);
+    }
+
+    const DONE = ['TARJADO', 'OBSERVADO'];
+    return [...byContainer.entries()]
+      .map(([containerNumber, counts]) => {
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        const done = DONE.reduce((a, s) => a + (counts[s] ?? 0), 0);
+        return {
+          containerNumber,
+          total,
+          done,
+          pending: total - done,
+          complete: done === total,
+          byStatus: counts,
+        };
+      })
+      .sort((a, b) => a.containerNumber.localeCompare(b.containerNumber));
+  }
 }

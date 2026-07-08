@@ -43,4 +43,9 @@ export class VehiclesController {
   remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.remove(id, user.userId);
   }
+
+  @Get('operations/:id/containers')
+  containers(@Param('id', ParseIntPipe) id: number) {
+    return this.service.containerProgress(id);
+  }
 }
