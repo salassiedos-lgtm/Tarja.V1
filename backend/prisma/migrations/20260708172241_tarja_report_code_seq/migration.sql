@@ -1,0 +1,1 @@
+CREATE SEQUENCE "tarja_report_code_seq" START WITH 1 INCREMENT BY 1 NO CYCLE;
