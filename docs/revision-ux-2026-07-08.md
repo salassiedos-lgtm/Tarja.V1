@@ -69,16 +69,35 @@ mano, con guantes, bajo sol. Prioridad de usabilidad sobre estética.
 
 ---
 
-## Consecuencias fuera del frontend
+## Orden de ejecución (decidido por el cliente)
 
-Dos puntos de este feedback **no son cosméticos** y tocan el backend:
+1. Terminar los bloques del backend (importación jerárquica, VIN único, correlativo).
+2. **Luego**, los cambios de frontend **puramente visuales**.
+3. **Diferido** hasta nuevo aviso: todo lo que exija backend nuevo.
 
-1. **Indicadores por tarjador.** Hoy no hay endpoint que devuelva métricas por usuario.
-   Hay que agregarlo (reportes finalizados por el usuario, duración media, vehículos
-   observados, etc.).
-2. **Operaciones vedadas al tarjador.** Requiere `@Roles('ADMIN','SUPERVISOR')` en el
-   controller de operaciones, no solo esconder el ítem del menú. Verificar también
-   qué otros endpoints está consumiendo hoy el panel del tarjador.
+### Se hace en la pasada visual
+
+| Vista | Trabajo |
+|---|---|
+| Accesorios | Rehacer la interfaz completa |
+| Operaciones | Reestructurar como repositorio consultable |
+| Auditoría | Rediseño + filtros (client-side sobre los datos que el endpoint ya devuelve) |
+| Supervisión | Solo capa de diseño, sin tocar comportamiento |
+| Dashboard | Solo capa de diseño |
+| Tarja (tarjador) | Rediseño de usabilidad |
+| Nav del tarjador | Ocultar el ítem "Operaciones" |
+
+### Se difiere (necesita backend)
+
+1. **Indicadores por tarjador.** No existe endpoint de métricas por usuario. Hay que
+   crearlo (reportes finalizados por ese usuario, duración media, vehículos observados).
+   Hasta entonces, el panel del tarjador seguirá mostrando cifras globales.
+
+2. **Cerrar Operaciones al tarjador de verdad.** Ocultar el ítem del menú es cosmético;
+   el endpoint sigue abierto y cualquiera con el token puede llamarlo. Requiere
+   `@Roles('ADMIN','SUPERVISOR')` en `operations.controller.ts`.
+   **Mientras no se haga, esto es una vulnerabilidad de control de acceso, no un
+   detalle visual.** Es una línea de código; conviene no dejarla mucho tiempo.
 
 ---
 
