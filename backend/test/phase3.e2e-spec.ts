@@ -63,7 +63,7 @@ describe('Fase 3 - Tarja (e2e)', () => {
     const start = await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: VIN_1 })
+      .send({ vin: VIN_1 })
       .expect(201);
     const reportId = start.body.id;
     expect(start.body.status).toBe('BORRADOR');
@@ -86,7 +86,7 @@ describe('Fase 3 - Tarja (e2e)', () => {
     await request(app.getHttpServer())
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: VIN_1 })
+      .send({ vin: VIN_1 })
       .expect(409);
   });
 
@@ -95,12 +95,12 @@ describe('Fase 3 - Tarja (e2e)', () => {
     await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: VIN_2 })
+      .send({ vin: VIN_2 })
       .expect(201);
     await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: VIN_2 })
+      .send({ vin: VIN_2 })
       .expect(409);
   });
 
@@ -113,12 +113,11 @@ describe('Fase 3 - Tarja (e2e)', () => {
     await request(srv).post(`/vehicles/${vId}/release`).set(H(adminToken)).expect(201);
   });
 
-  it('VIN no planificado genera reporte igualmente', async () => {
-    const start = await request(app.getHttpServer())
+  it('VIN desconocido bloquea al tarjador (404)', async () => {
+    await request(app.getHttpServer())
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: VIN_NOPLAN })
-      .expect(201);
-    expect(start.body.id).toBeDefined();
+      .send({ vin: VIN_NOPLAN })
+      .expect(404);
   });
 });

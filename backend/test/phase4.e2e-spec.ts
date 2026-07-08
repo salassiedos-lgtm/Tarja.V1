@@ -4,11 +4,16 @@ import request from 'supertest';
 import { Workbook } from 'exceljs';
 import { AppModule } from '../src/app.module';
 
+// vin y bl_number son unicos globales: cada corrida necesita valores propios.
+const RUN = Date.now().toString().slice(-8);
+const VIN_1 = `VINT4${RUN}01`;
+const BL_1 = `BL-T4-${RUN}`;
+
 async function makeExcel(): Promise<Buffer> {
   const wb = new Workbook();
   const ws = wb.addWorksheet('Hoja1');
   ws.addRow(['Nave', 'VIN', 'BL', 'Cantidad', 'Marca', 'Peso', 'Puerto embarque', 'Puerto descarga']);
-  ws.addRow(['NAVE T4', 'VINP40000000001', 'BL-T4', 1, 'Toyota', 1500, 'SH', 'Chancay']);
+  ws.addRow(['NAVE T4', VIN_1, BL_1, 1, 'Toyota', 1500, 'SH', 'Chancay']);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -45,7 +50,7 @@ describe('Fase 4 - Supervisor (e2e)', () => {
     const start = await request(s)
       .post('/tarja/start')
       .set(H(tarjadorT))
-      .send({ operationId, vin: 'VINP40000000001' });
+      .send({ vin: VIN_1 });
     reportId = start.body.id;
     await request(s).post(`/tarja/${reportId}/finish`).set(H(tarjadorT)).send({ initials: 'TJ1' });
   });
@@ -100,7 +105,7 @@ describe('Fase 4 - Supervisor (e2e)', () => {
     const start = await request(app.getHttpServer())
       .post('/tarja/start')
       .set(H(tarjadorT))
-      .send({ operationId, vin: 'VINP40000000001' })
+      .send({ vin: VIN_1 })
       .expect(201);
     expect(start.body.status).toBe('BORRADOR');
   });
