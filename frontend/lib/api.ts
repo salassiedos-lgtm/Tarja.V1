@@ -17,26 +17,67 @@ export interface LoginResult {
   user: AuthUser;
 }
 
-export async function login(username: string, password: string): Promise<LoginResult> {
-  const res = await fetch(`${API}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!res.ok) {
-    const msg =
-      res.status === 401
-        ? 'Usuario o contraseña incorrectos'
-        : 'No se pudo iniciar sesión. Intente nuevamente.';
-    throw new Error(msg);
-  }
-  return res.json() as Promise<LoginResult>;
+export interface Operation {
+  id: number;
+  code: string;
+  shipName: string;
+  operationType: 'ROLL_ON_ROLL_OFF' | 'DESCONSOLIDADO';
+  operationDate: string | null;
+  portDischarge: string | null;
+  status: 'ACTIVA' | 'PAUSADA' | 'CERRADA';
+  createdAt: string;
+  _count?: { vehicles: number; bills: number };
 }
 
-export function saveSession(data: LoginResult): void {
-  localStorage.setItem('accessToken', data.accessToken);
-  localStorage.setItem('refreshToken', data.refreshToken);
-  localStorage.setItem('user', JSON.stringify(data.user));
+export interface Accessory {
+  id: number;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface Vehicle {
+  id: number;
+  vin: string;
+  chassisNumber: string | null;
+  brand: string | null;
+  weight: number | null;
+  quantity: number;
+  status: string;
+  isUnplanned: boolean;
+  billOfLading?: { blNumber: string } | null;
+}
+
+export interface ImportPreviewRow {
+  rowNumber: number;
+  vin: string;
+  bl: string;
+  brand: string | null;
+  weight: number | null;
+  quantity: number;
+  errors: string[];
+}
+
+export interface ImportPreview {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  rows: ImportPreviewRow[];
+}
+
+export interface ImportResult {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  vehiclesCreated: number;
+  vehiclesSkipped: number;
+}
+
+// ---------------- sesión ----------------
+export function saveSession(d: LoginResult): void {
+  localStorage.setItem('accessToken', d.accessToken);
+  localStorage.setItem('refreshToken', d.refreshToken);
+  localStorage.setItem('user', JSON.stringify(d.user));
 }
 
 export function getUser(): AuthUser | null {
@@ -50,3 +91,96 @@ export function clearSession(): void {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
 }
+
+// ---------------- helpers HTTP ----------------
+function authHeaders(): Record<string, string> {
+  const t = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+async function handle<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    clearSession();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Sesión expirada');
+  }
+  if (!res.ok) {
+    let msg = 'Error en la solicitud';
+    try {
+      const b = await res.json();
+      if (b?.message) msg = Array.isArray(b.message) ? b.message.join(', ') : b.message;
+    } catch {
+      /* sin cuerpo JSON */
+    }
+    throw new Error(msg);
+  }
+  return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+async function apiGet<T>(path: string): Promise<T> {
+  return handle<T>(await fetch(`${API}${path}`, { headers: authHeaders() }));
+}
+
+async function apiJson<T>(path: string, method: string, body?: unknown): Promise<T> {
+  return handle<T>(
+    await fetch(`${API}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  );
+}
+
+async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const fd = new FormData();
+  fd.append('file', file);
+  return handle<T>(await fetch(`${API}${path}`, { method: 'POST', headers: authHeaders(), body: fd }));
+}
+
+// ---------------- auth ----------------
+export async function login(username: string, password: string): Promise<LoginResult> {
+  const res = await fetch(`${API}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 ? 'Usuario o contraseña incorrectos' : 'No se pudo iniciar sesión',
+    );
+  }
+  return res.json() as Promise<LoginResult>;
+}
+
+// ---------------- operaciones ----------------
+export const listOperations = () => apiGet<Operation[]>('/operations');
+export const getOperation = (id: number | string) => apiGet<Operation>(`/operations/${id}`);
+export const createOperation = (d: {
+  code: string;
+  shipName: string;
+  operationType: string;
+  operationDate?: string;
+  portDischarge?: string;
+}) => apiJson<Operation>('/operations', 'POST', d);
+export const setOperationStatus = (id: number, action: 'activate' | 'pause' | 'close') =>
+  apiJson<Operation>(`/operations/${id}/${action}`, 'POST');
+
+// ---------------- accesorios ----------------
+export const listAccessories = () => apiGet<Accessory[]>('/accessories');
+export const createAccessory = (name: string) => apiJson<Accessory>('/accessories', 'POST', { name });
+export const updateAccessory = (
+  id: number,
+  d: { name?: string; isActive?: boolean; sortOrder?: number },
+) => apiJson<Accessory>(`/accessories/${id}`, 'PATCH', d);
+
+// ---------------- importación ----------------
+export const previewImport = (operationId: number | string, file: File) =>
+  apiUpload<ImportPreview>(`/operations/${operationId}/imports/preview`, file);
+export const confirmImport = (operationId: number | string, file: File) =>
+  apiUpload<ImportResult>(`/operations/${operationId}/imports/confirm`, file);
+
+// ---------------- vehículos ----------------
+export const listVehicles = (operationId: number | string, vin?: string) =>
+  apiGet<Vehicle[]>(
+    `/operations/${operationId}/vehicles${vin ? `?vin=${encodeURIComponent(vin)}` : ''}`,
+  );

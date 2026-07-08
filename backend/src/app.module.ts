@@ -7,6 +7,10 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { OperationsModule } from './operations/operations.module';
+import { VehiclesModule } from './vehicles/vehicles.module';
+import { AccessoriesModule } from './accessories/accessories.module';
+import { ImportsModule } from './imports/imports.module';
 
 @Module({
   imports: [
@@ -15,6 +19,10 @@ import { UsersModule } from './users/users.module';
     PrismaModule,
     AuthModule,
     UsersModule,
+    OperationsModule,
+    VehiclesModule,
+    AccessoriesModule,
+    ImportsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

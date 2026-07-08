@@ -13,6 +13,27 @@ enum RoleName {
   TARJADOR
 }
 
+enum OperationType {
+  ROLL_ON_ROLL_OFF
+  DESCONSOLIDADO
+}
+
+enum OperationStatus {
+  ACTIVA
+  PAUSADA
+  CERRADA
+}
+
+enum VehicleStatus {
+  PENDIENTE
+  EN_PROCESO
+  TARJADO
+  OBSERVADO
+  REABIERTO
+  BLOQUEADO
+  NO_PLANIFICADO
+}
+
 model Role {
   id          Int      @id @default(autoincrement())
   name        RoleName @unique
@@ -41,5 +62,91 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
+  operationsCreated Operation[]       @relation("OperationCreatedBy")
+  importsUploaded   OperationImport[] @relation("ImportUploadedBy")
+
   @@map("users")
+}
+
+model Operation {
+  id            Int             @id @default(autoincrement())
+  code          String          @unique
+  shipName      String          @map("ship_name")
+  operationType OperationType   @map("operation_type")
+  operationDate DateTime?       @map("operation_date")
+  portDischarge String?         @map("port_discharge")
+  status        OperationStatus @default(ACTIVA)
+  createdById   Int?            @map("created_by")
+  createdBy     User?           @relation("OperationCreatedBy", fields: [createdById], references: [id])
+  bills         BillOfLading[]
+  vehicles      Vehicle[]
+  imports       OperationImport[]
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@map("operations")
+}
+
+model BillOfLading {
+  id            Int       @id @default(autoincrement())
+  operationId   Int       @map("operation_id")
+  operation     Operation @relation(fields: [operationId], references: [id])
+  blNumber      String    @map("bl_number")
+  bookingNumber String?   @map("booking_number")
+  portLoading   String?   @map("port_loading")
+  portDischarge String?   @map("port_discharge")
+  vehicles      Vehicle[]
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([operationId, blNumber])
+  @@map("bills_of_lading")
+}
+
+model Vehicle {
+  id             Int           @id @default(autoincrement())
+  operationId    Int           @map("operation_id")
+  operation      Operation     @relation(fields: [operationId], references: [id])
+  billOfLadingId Int?          @map("bill_of_lading_id")
+  billOfLading   BillOfLading? @relation(fields: [billOfLadingId], references: [id])
+  vin            String
+  chassisNumber  String?       @map("chassis_number")
+  brand          String?
+  weight         Float?
+  quantity       Int           @default(1)
+  status         VehicleStatus @default(PENDIENTE)
+  isUnplanned    Boolean       @default(false) @map("is_unplanned")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@unique([operationId, vin])
+  @@index([operationId])
+  @@map("vehicles")
+}
+
+model Accessory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("accessories")
+}
+
+model OperationImport {
+  id           Int       @id @default(autoincrement())
+  operationId  Int       @map("operation_id")
+  operation    Operation @relation(fields: [operationId], references: [id])
+  fileName     String    @map("file_name")
+  totalRows    Int       @map("total_rows")
+  validRows    Int       @map("valid_rows")
+  invalidRows  Int       @map("invalid_rows")
+  uploadedById Int?      @map("uploaded_by")
+  uploadedBy   User?     @relation("ImportUploadedBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("operation_imports")
 }
