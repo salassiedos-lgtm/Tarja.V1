@@ -4,12 +4,20 @@ import request from 'supertest';
 import { Workbook } from 'exceljs';
 import { AppModule } from '../src/app.module';
 
+// vin y bl_number son unicos globales: cada corrida necesita valores propios,
+// si no la segunda ejecucion los ve como "de otra operacion" y los rechaza.
+const RUN = Date.now().toString().slice(-8);
+const VIN_1 = `VINT3${RUN}01`;
+const VIN_2 = `VINT3${RUN}02`;
+const VIN_NOPLAN = `NOPLAN3${RUN}`;
+const BL_1 = `BL-T3-${RUN}`;
+
 async function makeExcel(): Promise<Buffer> {
   const wb = new Workbook();
   const ws = wb.addWorksheet('Hoja1');
   ws.addRow(['Nave', 'VIN', 'BL', 'Cantidad', 'Marca', 'Peso', 'Puerto embarque', 'Puerto descarga']);
-  ws.addRow(['NAVE T3', 'VINP30000000001', 'BL-T3', 1, 'Toyota', 1500, 'SH', 'Chancay']);
-  ws.addRow(['NAVE T3', 'VINP30000000002', 'BL-T3', 1, 'Kia', 1200, 'SH', 'Chancay']);
+  ws.addRow(['NAVE T3', VIN_1, BL_1, 1, 'Toyota', 1500, 'SH', 'Chancay']);
+  ws.addRow(['NAVE T3', VIN_2, BL_1, 1, 'Kia', 1200, 'SH', 'Chancay']);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -55,7 +63,7 @@ describe('Fase 3 - Tarja (e2e)', () => {
     const start = await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: 'VINP30000000001' })
+      .send({ operationId, vin: VIN_1 })
       .expect(201);
     const reportId = start.body.id;
     expect(start.body.status).toBe('BORRADOR');
@@ -78,7 +86,7 @@ describe('Fase 3 - Tarja (e2e)', () => {
     await request(app.getHttpServer())
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: 'VINP30000000001' })
+      .send({ operationId, vin: VIN_1 })
       .expect(409);
   });
 
@@ -87,19 +95,19 @@ describe('Fase 3 - Tarja (e2e)', () => {
     await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: 'VINP30000000002' })
+      .send({ operationId, vin: VIN_2 })
       .expect(201);
     await request(srv)
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: 'VINP30000000002' })
+      .send({ operationId, vin: VIN_2 })
       .expect(409);
   });
 
   it('supervisor/admin libera el candado', async () => {
     const srv = app.getHttpServer();
     const vehicles = await request(srv)
-      .get(`/operations/${operationId}/vehicles?vin=VINP30000000002`)
+      .get(`/operations/${operationId}/vehicles?vin=${VIN_2}`)
       .set(H(adminToken));
     const vId = vehicles.body[0].id;
     await request(srv).post(`/vehicles/${vId}/release`).set(H(adminToken)).expect(201);
@@ -109,7 +117,7 @@ describe('Fase 3 - Tarja (e2e)', () => {
     const start = await request(app.getHttpServer())
       .post('/tarja/start')
       .set(H(tarjadorToken))
-      .send({ operationId, vin: 'NOPLANVIN000001' })
+      .send({ operationId, vin: VIN_NOPLAN })
       .expect(201);
     expect(start.body.id).toBeDefined();
   });

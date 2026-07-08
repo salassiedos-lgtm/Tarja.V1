@@ -9,6 +9,7 @@ import { Prisma, ReportStatus, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
+import { normalizeVin } from '../common/vin.util';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -17,6 +18,13 @@ import {
 } from './dto/tarja.dto';
 
 const AUTO_RELEASE_MIN = 15;
+
+/** true si el P2002 viene del indice unico global de `vehicles.vin`. */
+function conflictsOnVin(e: Prisma.PrismaClientKnownRequestError): boolean {
+  const target = e.meta?.target;
+  const fields = Array.isArray(target) ? target.map(String) : [String(target ?? '')];
+  return fields.some((f) => f.toLowerCase().includes('vin'));
+}
 
 @Injectable()
 export class TarjaService {
@@ -29,13 +37,23 @@ export class TarjaService {
   async start(dto: StartTarjaDto, tarjadorId: number) {
     const op = await this.prisma.operation.findUnique({ where: { id: dto.operationId } });
     if (!op) throw new NotFoundException('Operacion no encontrada');
-    const vin = dto.vin.trim();
 
-    // vin es unico global, pero el reporte se crea contra dto.operationId: buscar solo por vin
-    // devolveria un vehiculo de OTRA operacion. Acotamos la busqueda a esta operacion.
-    const existing = await this.prisma.vehicle.findFirst({
-      where: { operationId: dto.operationId, vin },
+    // El importador guarda los VIN normalizados (vin.util). Normalizamos aqui con la misma
+    // funcion, si no un VIN escrito con guiones o en minusculas no encontraria su fila.
+    const vin = normalizeVin(dto.vin);
+    if (!vin) throw new BadRequestException('VIN invalido');
+
+    // vin es unico global: la busqueda NO puede acotarse a la operacion, si no un VIN de otra
+    // operacion pareceria inexistente y el create posterior chocaria contra vehicles_vin_key.
+    const existing = await this.prisma.vehicle.findUnique({
+      where: { vin },
+      include: { operation: { select: { code: true } } },
     });
+    if (existing && existing.operationId !== dto.operationId) {
+      throw new ConflictException(
+        `Este VIN pertenece a la operacion ${existing.operation.code}, no a la actual`,
+      );
+    }
     if (existing?.status === 'EN_PROCESO') {
       throw new ConflictException('Este vehiculo esta siendo procesado por otro usuario');
     }
@@ -98,6 +116,13 @@ export class TarjaService {
       return report;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        // vehicles_vin_key: otra transaccion creo el vehiculo entre el findUnique y el create.
+        if (conflictsOnVin(e)) {
+          throw new ConflictException(
+            'Otro usuario acaba de registrar este VIN. Vuelva a intentarlo.',
+          );
+        }
+        // vehicles_current_report_id_key: el vehiculo ya tiene un borrador enganchado.
         throw new ConflictException('Este vehiculo ya tiene un reporte activo');
       }
       throw e;
