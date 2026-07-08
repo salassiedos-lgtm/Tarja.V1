@@ -9,6 +9,7 @@ import { Prisma, ReportStatus, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
+import { ReportCodeService } from './report-code.service';
 import { normalizeVin } from '../common/vin.util';
 import {
   FinishTarjaDto,
@@ -32,6 +33,7 @@ export class TarjaService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly audit: AuditService,
+    private readonly reportCode: ReportCodeService,
   ) {}
 
   async start(dto: StartTarjaDto, tarjadorId: number) {
@@ -92,9 +94,10 @@ export class TarjaService {
           throw new ConflictException('Otro tarjador tomo este vehiculo primero');
         }
 
+        const reportCode = await this.reportCode.next(tx);
         const created = await tx.tarjaReport.create({
           data: {
-            reportCode: `TR-${Date.now()}-${vehicle.id}`,
+            reportCode,
             operationId: dto.operationId,
             vehicleId: vehicle.id,
             billOfLadingId: vehicle.billOfLadingId,
