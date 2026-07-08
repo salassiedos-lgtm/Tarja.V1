@@ -17,7 +17,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN', 'SUPERVISOR')
 @Controller('operations/:id/imports')
 export class ImportsController {
   constructor(private readonly service: ImportsService) {}
