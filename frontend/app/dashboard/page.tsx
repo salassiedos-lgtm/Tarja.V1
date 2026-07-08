@@ -25,6 +25,13 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-semibold text-slate-800">Panel</h1>
       <p className="mt-1 text-slate-500">Bienvenido{user ? `, ${user.name}` : ''}.</p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {user?.role === 'TARJADOR' && (
+          <Card
+            href="/tarja"
+            title="Nueva tarja"
+            desc="Ingresar el VIN y registrar accesorios y daños de la unidad."
+          />
+        )}
         <Card
           href="/operations"
           title="Operaciones"

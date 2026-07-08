@@ -184,3 +184,49 @@ export const listVehicles = (operationId: number | string, vin?: string) =>
   apiGet<Vehicle[]>(
     `/operations/${operationId}/vehicles${vin ? `?vin=${encodeURIComponent(vin)}` : ''}`,
   );
+
+// ---------------- tarja ----------------
+export interface ReportAccessory {
+  accessoryId: number;
+  hasAccessory: boolean;
+  quantity: number;
+  accessory?: { name: string };
+}
+export interface ReportDamage {
+  id: number;
+  description: string;
+}
+export interface TarjaReport {
+  id: number;
+  reportCode: string;
+  status: string;
+  hasDamage: boolean;
+  vehicleId: number;
+  operationId: number;
+  startedAt: string | null;
+  tarjadorInitials: string | null;
+  vehicle?: { vin: string; brand: string | null };
+  accessories?: ReportAccessory[];
+  damages?: ReportDamage[];
+}
+export interface DamageInput {
+  hasDamage: boolean;
+  damageSource?: string;
+  damageOperation?: string;
+  damageAffects?: string;
+  damageMoment?: string;
+  damageMomentOther?: string;
+  descriptions?: string[];
+}
+
+export const startTarja = (operationId: number, vin: string) =>
+  apiJson<TarjaReport>('/tarja/start', 'POST', { operationId, vin });
+export const getReport = (id: number | string) => apiGet<TarjaReport>(`/tarja/${id}`);
+export const setReportAccessories = (
+  id: number | string,
+  items: { accessoryId: number; hasAccessory: boolean; quantity: number }[],
+) => apiJson<TarjaReport>(`/tarja/${id}/accessories`, 'PATCH', { items });
+export const setReportDamages = (id: number | string, d: DamageInput) =>
+  apiJson<TarjaReport>(`/tarja/${id}/damages`, 'PATCH', d);
+export const finishTarja = (id: number | string, d: { details?: string; initials?: string }) =>
+  apiJson<TarjaReport>(`/tarja/${id}/finish`, 'POST', d);

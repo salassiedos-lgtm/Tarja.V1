@@ -38,6 +38,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <Link href="/operations" className="hover:text-white">
                 Operaciones
               </Link>
+              {user.role === 'TARJADOR' && (
+                <Link href="/tarja" className="hover:text-white">
+                  Tarja
+                </Link>
+              )}
               {user.role === 'ADMIN' && (
                 <Link href="/accessories" className="hover:text-white">
                   Accesorios
