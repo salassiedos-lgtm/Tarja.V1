@@ -1,7 +1,18 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller()
@@ -16,8 +27,20 @@ export class VehiclesController {
     return this.service.findByOperation(id, vin);
   }
 
+  @Get('vehicles/lookup')
+  lookup(@Query('vin') vin: string) {
+    if (!vin) throw new BadRequestException('Parametro vin requerido');
+    return this.service.lookup(vin);
+  }
+
   @Get('vehicles/:id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
+  }
+
+  @Delete('vehicles/:id')
+  @Roles('ADMIN', 'SUPERVISOR')
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.remove(id, user.userId);
   }
 }

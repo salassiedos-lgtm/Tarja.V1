@@ -13,16 +13,9 @@ import { Type } from 'class-transformer';
 import { DamageAffects, DamageMoment, DamageOperation, DamageSource } from '@prisma/client';
 
 export class StartTarjaDto {
-  @IsInt()
-  operationId: number;
-
   @IsString()
   @MinLength(1)
   vin: string;
-
-  @IsOptional()
-  @IsString()
-  bl?: string;
 }
 
 export class AccessoryItemDto {

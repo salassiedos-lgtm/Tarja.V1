@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
 import { ReportCodeService } from './report-code.service';
-import { normalizeVin } from '../common/vin.util';
+import { validateVin } from '../common/vin.util';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -19,13 +19,6 @@ import {
 } from './dto/tarja.dto';
 
 const AUTO_RELEASE_MIN = 15;
-
-/** true si el P2002 viene del indice unico global de `vehicles.vin`. */
-function conflictsOnVin(e: Prisma.PrismaClientKnownRequestError): boolean {
-  const target = e.meta?.target;
-  const fields = Array.isArray(target) ? target.map(String) : [String(target ?? '')];
-  return fields.some((f) => f.toLowerCase().includes('vin'));
-}
 
 @Injectable()
 export class TarjaService {
@@ -37,48 +30,42 @@ export class TarjaService {
   ) {}
 
   async start(dto: StartTarjaDto, tarjadorId: number) {
-    const op = await this.prisma.operation.findUnique({ where: { id: dto.operationId } });
-    if (!op) throw new NotFoundException('Operacion no encontrada');
+    const { vin } = validateVin(dto.vin);
 
-    // El importador guarda los VIN normalizados (vin.util). Normalizamos aqui con la misma
-    // funcion, si no un VIN escrito con guiones o en minusculas no encontraria su fila.
-    const vin = normalizeVin(dto.vin);
-    if (!vin) throw new BadRequestException('VIN invalido');
+    const vehicle = await this.prisma.vehicle.findUnique({ where: { vin } });
 
-    // vin es unico global: la busqueda NO puede acotarse a la operacion, si no un VIN de otra
-    // operacion pareceria inexistente y el create posterior chocaria contra vehicles_vin_key.
-    const existing = await this.prisma.vehicle.findUnique({
-      where: { vin },
-      include: { operation: { select: { code: true } } },
-    });
-    if (existing && existing.operationId !== dto.operationId) {
-      throw new ConflictException(
-        `Este VIN pertenece a la operacion ${existing.operation.code}, no a la actual`,
+    // VIN desconocido: el tarjador no puede continuar. Queda en bitacora
+    // para que el supervisor lo regularice dando de alta el vehiculo.
+    if (!vehicle) {
+      this.audit.record({
+        userId: tarjadorId,
+        module: 'tarja',
+        action: 'VIN_NO_ENCONTRADO',
+        description: `VIN ${vin} no existe en ninguna operacion`,
+        newValue: vin,
+      });
+      this.realtime.emit('vin.unknown', { vin, tarjadorId });
+      throw new NotFoundException(
+        `VIN ${vin} no encontrado. Se notifico al supervisor para su regularizacion.`,
       );
     }
-    if (existing?.status === 'EN_PROCESO') {
+
+    if (vehicle.status === 'EN_PROCESO') {
       throw new ConflictException('Este vehiculo esta siendo procesado por otro usuario');
     }
-    if (existing?.status === 'TARJADO' || existing?.status === 'OBSERVADO') {
+    if (vehicle.status === 'TARJADO' || vehicle.status === 'OBSERVADO') {
       throw new ConflictException(
         'Este vehiculo ya tiene una tarja valida. Anule antes de re-tarjar.',
       );
     }
+    if (vehicle.status === 'BLOQUEADO') {
+      throw new ConflictException('Este vehiculo esta bloqueado por revision operativa');
+    }
+
+    const operationId = vehicle.operationId;
 
     try {
       const report = await this.prisma.$transaction(async (tx) => {
-        const vehicle =
-          existing ??
-          (await tx.vehicle.create({
-            data: {
-              operationId: dto.operationId,
-              vin,
-              chassisNumber: vin,
-              isUnplanned: true,
-              status: 'NO_PLANIFICADO',
-            },
-          }));
-
         // Compare-and-swap atomico: el where con status evita la carrera TOCTOU entre el
         // findUnique de arriba (fuera de la transaccion) y este update. Si otro tarjador
         // gano la carrera, count sera 0 y abortamos antes de crear el reporte.
@@ -98,7 +85,7 @@ export class TarjaService {
         const created = await tx.tarjaReport.create({
           data: {
             reportCode,
-            operationId: dto.operationId,
+            operationId,
             vehicleId: vehicle.id,
             billOfLadingId: vehicle.billOfLadingId,
             tarjadorId,
@@ -117,7 +104,7 @@ export class TarjaService {
 
       this.realtime.emit('report.started', {
         reportId: report.id,
-        operationId: dto.operationId,
+        operationId,
         vehicleId: report.vehicleId,
       });
       this.audit.record({
@@ -129,12 +116,6 @@ export class TarjaService {
       return report;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        // vehicles_vin_key: otra transaccion creo el vehiculo entre el findUnique y el create.
-        if (conflictsOnVin(e)) {
-          throw new ConflictException(
-            'Otro usuario acaba de registrar este VIN. Vuelva a intentarlo.',
-          );
-        }
         // vehicles_current_report_id_key: el vehiculo ya tiene un borrador enganchado.
         throw new ConflictException('Este vehiculo ya tiene un reporte activo');
       }
