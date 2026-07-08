@@ -4,6 +4,14 @@ import request from 'supertest';
 import { Workbook } from 'exceljs';
 import { AppModule } from '../src/app.module';
 
+// vin y bl_number son unicos globales: cada corrida necesita valores propios,
+// si no la segunda ejecucion los ve como "de otra operacion" y los rechaza.
+const RUN = Date.now().toString().slice(-8);
+const VIN_1 = `VINTEST${RUN}01`;
+const VIN_2 = `VINTEST${RUN}02`;
+const BL_1 = `BL-${RUN}-1`;
+const BL_2 = `BL-${RUN}-2`;
+
 async function makeExcel(): Promise<Buffer> {
   const wb = new Workbook();
   const ws = wb.addWorksheet('Hoja1');
@@ -17,9 +25,9 @@ async function makeExcel(): Promise<Buffer> {
     'Puerto embarque',
     'Puerto descarga',
   ]);
-  ws.addRow(['NAVE TEST', 'VINTEST0000000001', 'BL-001', 1, 'Toyota', 1500, 'Shanghai', 'Chancay']);
-  ws.addRow(['NAVE TEST', 'VINTEST0000000002', 'BL-001', 1, 'Kia', 1200, 'Shanghai', 'Chancay']);
-  ws.addRow(['NAVE TEST', '', 'BL-002', 1, 'SinVin', 1000, 'Shanghai', 'Chancay']);
+  ws.addRow(['NAVE TEST', VIN_1, BL_1, 1, 'Toyota', 1500, 'Shanghai', 'Chancay']);
+  ws.addRow(['NAVE TEST', VIN_2, BL_1, 1, 'Kia', 1200, 'Shanghai', 'Chancay']);
+  ws.addRow(['NAVE TEST', '', BL_2, 1, 'SinVin', 1000, 'Shanghai', 'Chancay']);
   const arr = await wb.xlsx.writeBuffer();
   return Buffer.from(arr);
 }
@@ -82,7 +90,9 @@ describe('Fase 2 (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .attach('file', buffer, 'test.xlsx')
       .expect(201);
-    expect(res.body.vehiclesCreated).toBe(2);
+    expect(res.body.newVehicles).toBe(2);
+    expect(res.body.existingVehicles).toBe(0);
+    expect(res.body.conflictingVehicles).toBe(0);
 
     const vehicles = await request(app.getHttpServer())
       .get(`/operations/${operationId}/vehicles`)

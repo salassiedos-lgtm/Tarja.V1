@@ -31,8 +31,10 @@ export class TarjaService {
     if (!op) throw new NotFoundException('Operacion no encontrada');
     const vin = dto.vin.trim();
 
-    const existing = await this.prisma.vehicle.findUnique({
-      where: { operationId_vin: { operationId: dto.operationId, vin } },
+    // vin es unico global, pero el reporte se crea contra dto.operationId: buscar solo por vin
+    // devolveria un vehiculo de OTRA operacion. Acotamos la busqueda a esta operacion.
+    const existing = await this.prisma.vehicle.findFirst({
+      where: { operationId: dto.operationId, vin },
     });
     if (existing?.status === 'EN_PROCESO') {
       throw new ConflictException('Este vehiculo esta siendo procesado por otro usuario');

@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ImporterRegistry } from './importers/importer.registry';
@@ -46,7 +47,9 @@ export class ImportsService {
   /**
    * Clasifica cada VIN valido contra la base:
    *  - new: no existe
-   *  - existing: ya existe en ESTA operacion (reimportacion aditiva -> se omite)
+   *  - existing: ya existe en ESTA operacion (reimportacion aditiva -> se omite).
+   *    Tambien caen aqui las repeticiones del mismo VIN dentro del propio archivo:
+   *    solo la primera ocurrencia se inserta.
    *  - conflicting: existe en OTRA operacion (VIN es unico global -> se rechaza)
    */
   private async classify(operationId: number, rows: ImportedRow[]): Promise<Classification> {
@@ -69,6 +72,7 @@ export class ImportsService {
     const fresh: ImportedRow[] = [];
     const existing: ImportedRow[] = [];
     const conflicting: ImportedRow[] = [];
+    const seenVins = new Set<string>();
 
     for (const row of valid) {
       const blOwnedBy = blOwner.get(row.bl);
@@ -78,8 +82,15 @@ export class ImportsService {
         continue;
       }
       const vinOwnedBy = byVin.get(row.vin);
-      if (vinOwnedBy === undefined) fresh.push(row);
-      else if (vinOwnedBy === operationId) existing.push(row);
+      if (vinOwnedBy === undefined) {
+        // VIN es unico global: una repeticion dentro del archivo no puede insertarse dos veces.
+        if (seenVins.has(row.vin)) {
+          existing.push(row);
+        } else {
+          seenVins.add(row.vin);
+          fresh.push(row);
+        }
+      } else if (vinOwnedBy === operationId) existing.push(row);
       else {
         row.errors.push(`El VIN ${row.vin} ya existe en otra operacion`);
         conflicting.push(row);
@@ -112,44 +123,63 @@ export class ImportsService {
     const c = await this.classify(operationId, rows);
     const summary = this.summarize(rows, c);
 
-    await this.prisma.$transaction(async (tx) => {
-      const blIds = new Map<string, number>();
-      for (const blNumber of new Set(c.fresh.map((r) => r.bl))) {
-        const bl = await tx.billOfLading.upsert({
-          where: { blNumber },
-          update: {},
-          create: { operationId, blNumber, portDischarge: 'Chancay' },
-        });
-        blIds.set(blNumber, bl.id);
-      }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const blIds = new Map<string, number>();
+        for (const blNumber of new Set(c.fresh.map((r) => r.bl))) {
+          // blNumber es unico global: re-verificamos la propiedad DENTRO de la transaccion,
+          // porque classify() corre fuera y otra operacion puede haber creado el BL entretanto.
+          const owner = await tx.billOfLading.findUnique({ where: { blNumber } });
+          if (owner) {
+            if (owner.operationId !== operationId) {
+              throw new BadRequestException(`El BL ${blNumber} pertenece a otra operacion`);
+            }
+            blIds.set(blNumber, owner.id);
+          } else {
+            const bl = await tx.billOfLading.create({
+              data: { operationId, blNumber, portDischarge: 'Chancay' },
+            });
+            blIds.set(blNumber, bl.id);
+          }
+        }
 
-      if (c.fresh.length > 0) {
-        await tx.vehicle.createMany({
-          data: c.fresh.map((r) => ({
+        if (c.fresh.length > 0) {
+          await tx.vehicle.createMany({
+            data: c.fresh.map((r) => ({
+              operationId,
+              billOfLadingId: blIds.get(r.bl)!,
+              vin: r.vin,
+              chassisNumber: r.vin,
+              containerNumber: r.containerNumber,
+              brand: r.brand,
+              model: r.model,
+              weight: r.weight,
+              quantity: r.quantity,
+            })),
+          });
+        }
+
+        await tx.operationImport.create({
+          data: {
             operationId,
-            billOfLadingId: blIds.get(r.bl)!,
-            vin: r.vin,
-            chassisNumber: r.vin,
-            containerNumber: r.containerNumber,
-            brand: r.brand,
-            model: r.model,
-            weight: r.weight,
-            quantity: r.quantity,
-          })),
+            fileName,
+            totalRows: summary.totalRows,
+            validRows: summary.validRows,
+            invalidRows: summary.invalidRows,
+            uploadedById: userId,
+          },
         });
-      }
-
-      await tx.operationImport.create({
-        data: {
-          operationId,
-          fileName,
-          totalRows: summary.totalRows,
-          validRows: summary.validRows,
-          invalidRows: summary.invalidRows,
-          uploadedById: userId,
-        },
       });
-    });
+    } catch (e) {
+      // Otra importacion concurrente gano la carrera por un VIN o un BL (unicos globales).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException(
+          'Otra importacion registro alguno de estos VIN o BL mientras se confirmaba. ' +
+            'Vuelva a previsualizar el archivo.',
+        );
+      }
+      throw e;
+    }
 
     this.audit.record({
       userId,

@@ -70,8 +70,11 @@ export interface ImportResult {
   totalRows: number;
   validRows: number;
   invalidRows: number;
-  vehiclesCreated: number;
-  vehiclesSkipped: number;
+  rowsWithWarnings: number;
+  newVehicles: number;
+  existingVehicles: number;
+  conflictingVehicles: number;
+  blsDetected: number;
 }
 
 // ---------------- sesión ----------------

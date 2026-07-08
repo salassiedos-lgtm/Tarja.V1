@@ -43,7 +43,9 @@ function ImportPanel({ operationId, onDone }: { operationId: string; onDone: () 
     try {
       const r = await confirmImport(operationId, file);
       setMsg(
-        `Importados ${r.vehiclesCreated} vehículos (${r.vehiclesSkipped} omitidos, ${r.invalidRows} inválidos).`,
+        `Importados ${r.newVehicles} vehículos (${r.existingVehicles} ya existentes, ` +
+          `${r.conflictingVehicles} rechazados, ${r.invalidRows} inválidos, ` +
+          `${r.rowsWithWarnings} con advertencias).`,
       );
       setPreview(null);
       setFile(null);
