@@ -32,6 +32,13 @@ export default function DashboardPage() {
             desc="Ingresar el VIN y registrar accesorios y daños de la unidad."
           />
         )}
+        {(user?.role === 'SUPERVISOR' || user?.role === 'ADMIN') && (
+          <Card
+            href="/supervisor"
+            title="Supervisión"
+            desc="Monitorear el avance en tiempo real y anular reportes."
+          />
+        )}
         <Card
           href="/operations"
           title="Operaciones"

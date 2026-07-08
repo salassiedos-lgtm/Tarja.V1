@@ -12,6 +12,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
 import { AccessoriesModule } from './accessories/accessories.module';
 import { ImportsModule } from './imports/imports.module';
 import { TarjaModule } from './tarja/tarja.module';
+import { ReportsModule } from './reports/reports.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -26,6 +27,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     AccessoriesModule,
     ImportsModule,
     TarjaModule,
+    ReportsModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],

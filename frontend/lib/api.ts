@@ -1,4 +1,5 @@
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+const API = API_URL;
 
 export type Role = 'ADMIN' | 'SUPERVISOR' | 'TARJADOR';
 
@@ -230,3 +231,33 @@ export const setReportDamages = (id: number | string, d: DamageInput) =>
   apiJson<TarjaReport>(`/tarja/${id}/damages`, 'PATCH', d);
 export const finishTarja = (id: number | string, d: { details?: string; initials?: string }) =>
   apiJson<TarjaReport>(`/tarja/${id}/finish`, 'POST', d);
+
+// ---------------- supervisión / reportes ----------------
+export interface ProgressData {
+  operationId: number;
+  total: number;
+  byStatus: Record<string, number>;
+  avgDurationSeconds: number;
+}
+export interface ReportRow {
+  id: number;
+  reportCode: string;
+  status: string;
+  hasDamage: boolean;
+  durationSeconds: number | null;
+  vehicle?: { vin: string };
+  tarjador?: { username: string; initials: string | null };
+  operation?: { code: string };
+}
+export interface DashboardData {
+  operations: (Operation & { _count?: { vehicles: number } })[];
+  recent: ReportRow[];
+}
+
+export const getSupervisorDashboard = () => apiGet<DashboardData>('/dashboard/supervisor');
+export const getProgress = (operationId: number | string) =>
+  apiGet<ProgressData>(`/operations/${operationId}/progress`);
+export const listReports = (operationId?: number) =>
+  apiGet<ReportRow[]>(`/reports${operationId ? `?operationId=${operationId}` : ''}`);
+export const annulReport = (reportId: number, reason: string, comment?: string) =>
+  apiJson<ReportRow>(`/reports/${reportId}/annul`, 'POST', { reason, comment });

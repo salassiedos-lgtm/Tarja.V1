@@ -7,6 +7,7 @@ import {
 import { Cron } from '@nestjs/schedule';
 import { Prisma, ReportStatus, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -18,7 +19,10 @@ const AUTO_RELEASE_MIN = 15;
 
 @Injectable()
 export class TarjaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async start(dto: StartTarjaDto, tarjadorId: number) {
     const op = await this.prisma.operation.findUnique({ where: { id: dto.operationId } });
@@ -38,7 +42,7 @@ export class TarjaService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const report = await this.prisma.$transaction(async (tx) => {
         const vehicle =
           existing ??
           (await tx.vehicle.create({
@@ -51,7 +55,7 @@ export class TarjaService {
             },
           }));
 
-        const report = await tx.tarjaReport.create({
+        const created = await tx.tarjaReport.create({
           data: {
             reportCode: `TR-${Date.now()}-${vehicle.id}`,
             operationId: dto.operationId,
@@ -69,12 +73,19 @@ export class TarjaService {
             status: 'EN_PROCESO',
             lockedById: tarjadorId,
             lockedAt: new Date(),
-            currentReportId: report.id,
+            currentReportId: created.id,
           },
         });
 
-        return report;
+        return created;
       });
+
+      this.realtime.emit('report.started', {
+        reportId: report.id,
+        operationId: dto.operationId,
+        vehicleId: report.vehicleId,
+      });
+      return report;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Este vehiculo ya tiene un reporte activo');
@@ -145,8 +156,8 @@ export class TarjaService {
     const status: ReportStatus = report.hasDamage ? 'CON_DANO' : 'FINALIZADO';
     const vehicleStatus: VehicleStatus = report.hasDamage ? 'OBSERVADO' : 'TARJADO';
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.tarjaReport.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const r = await tx.tarjaReport.update({
         where: { id: reportId },
         data: {
           finishedAt: now,
@@ -160,8 +171,16 @@ export class TarjaService {
         where: { id: report.vehicleId },
         data: { status: vehicleStatus, lockedById: null, lockedAt: null },
       });
-      return updated;
+      return r;
     });
+
+    this.realtime.emit('report.finished', {
+      reportId,
+      operationId: report.operationId,
+      vehicleId: report.vehicleId,
+      status,
+    });
+    return updated;
   }
 
   findOne(reportId: number) {
@@ -180,6 +199,7 @@ export class TarjaService {
     const vehicle = await this.prisma.vehicle.findUnique({ where: { id: vehicleId } });
     if (!vehicle) throw new NotFoundException('Vehiculo no encontrado');
     await this.discardDraftAndUnlock(vehicleId, vehicle.currentReportId);
+    this.realtime.emit('vehicle.released', { vehicleId, operationId: vehicle.operationId });
     return { released: true };
   }
 
@@ -204,10 +224,15 @@ export class TarjaService {
     const threshold = new Date(Date.now() - AUTO_RELEASE_MIN * 60_000);
     const stale = await this.prisma.tarjaReport.findMany({
       where: { status: 'BORRADOR', startedAt: { lt: threshold } },
-      select: { id: true, vehicleId: true },
+      select: { id: true, vehicleId: true, operationId: true },
     });
     for (const r of stale) {
       await this.discardDraftAndUnlock(r.vehicleId, r.id);
+      this.realtime.emit('vehicle.auto_released', {
+        vehicleId: r.vehicleId,
+        operationId: r.operationId,
+        reportId: r.id,
+      });
     }
     return stale.length;
   }

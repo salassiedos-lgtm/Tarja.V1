@@ -43,6 +43,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                   Tarja
                 </Link>
               )}
+              {(user.role === 'SUPERVISOR' || user.role === 'ADMIN') && (
+                <Link href="/supervisor" className="hover:text-white">
+                  Supervisión
+                </Link>
+              )}
               {user.role === 'ADMIN' && (
                 <Link href="/accessories" className="hover:text-white">
                   Accesorios
