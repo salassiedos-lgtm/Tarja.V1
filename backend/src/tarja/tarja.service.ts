@@ -77,6 +77,21 @@ export class TarjaService {
             },
           }));
 
+        // Compare-and-swap atomico: el where con status evita la carrera TOCTOU entre el
+        // findUnique de arriba (fuera de la transaccion) y este update. Si otro tarjador
+        // gano la carrera, count sera 0 y abortamos antes de crear el reporte.
+        const locked = await tx.vehicle.updateMany({
+          where: { id: vehicle.id, status: vehicle.status },
+          data: {
+            status: 'EN_PROCESO',
+            lockedById: tarjadorId,
+            lockedAt: new Date(),
+          },
+        });
+        if (locked.count === 0) {
+          throw new ConflictException('Otro tarjador tomo este vehiculo primero');
+        }
+
         const created = await tx.tarjaReport.create({
           data: {
             reportCode: `TR-${Date.now()}-${vehicle.id}`,
@@ -91,12 +106,7 @@ export class TarjaService {
 
         await tx.vehicle.update({
           where: { id: vehicle.id },
-          data: {
-            status: 'EN_PROCESO',
-            lockedById: tarjadorId,
-            lockedAt: new Date(),
-            currentReportId: created.id,
-          },
+          data: { currentReportId: created.id },
         });
 
         return created;
