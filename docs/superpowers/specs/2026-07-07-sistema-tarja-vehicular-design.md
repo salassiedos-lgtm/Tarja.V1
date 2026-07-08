@@ -124,7 +124,24 @@ Herramientas, Llaves del vehículo, Catálogos, Relays.
 Cada accesorio en el reporte guarda `has_accessory` (Y/N) y `quantity`
 (CANT/QTY), igual que la ficha.
 
-### 4.4 Sin cambios respecto al plan
+### 4.4 Campos del vehículo derivados del Excel
+
+El Excel real trae columnas que se mapean así en la importación (Fase 2):
+
+| Columna Excel | Destino |
+| --- | --- |
+| `Nave` | `operations.ship_name` |
+| `BL` | `bills_of_lading.bl_number` |
+| `VIN` | `vehicles.vin` (y `chassis_number` = mismo valor) |
+| `Marca` | `vehicles.brand` (nuevo campo) |
+| `Peso` | `vehicles.weight` (nuevo campo, kg) |
+| `Cantidad` | `vehicles.quantity` (nuevo campo, default 1) |
+| `Puerto embarque` | `bills_of_lading.port_loading` |
+| `Puerto descarga` | `bills_of_lading.port_discharge` |
+
+Se agregan a `vehicles` los campos `brand`, `weight`, `quantity`.
+
+### 4.5 Sin cambios respecto al plan
 
 Relación 1:1 vehículo–tarja válida (índice parcial), `replaced_by_report_id`,
 FK circular `vehicles.current_report_id` ↔ `tarja_reports.vehicle_id` (relación
@@ -166,14 +183,31 @@ EN/ES), incluyendo:
 
 ---
 
-## 7. Insumos pendientes del usuario (no bloquean el arranque)
+## 7. Estado de insumos y decisiones (actualizado 2026-07-07)
 
-- Contraseña del usuario `postgres` (para crear la BD) — antes de la Fase 1.
-- **Excel real** con encabezados exactos (idealmente RO-RO y DESCONSOLIDADO) —
-  antes de la Fase 2.
-- **Foto de la etiqueta VIN** — para activar/ajustar el escáner en la Fase 3.
-- Confirmar si la **marca de agua** va como fondo tenue de página o solo en el
-  encabezado del PDF (como la ficha actual).
+- **BD local: RESUELTO.** PostgreSQL 18.4. Rol dedicado `tarja` + base `tarja_dev`
+  creados. `DATABASE_URL=postgresql://tarja:tarja_local@localhost:5432/tarja_dev?schema=public`.
+- **Excel: RESUELTO (formato base).** Columnas confirmadas: `Nave`, `VIN`, `BL`,
+  `Cantidad`, `Marca`, `Peso`, `Puerto embarque`, `Puerto descarga`. Puede
+  ajustarse después sin bloquear.
+- **Escáner de VIN por cámara: DIFERIDO** por decisión del usuario. Se deja la
+  **entrada manual funcional** y el módulo de escáner **cableado pero sin activar**
+  para retomarlo luego (la foto de la etiqueta llega después).
+- **Marca de agua PDF:** en el **encabezado** (como la ficha actual). CONFIRMADO.
+- **Git push a GitHub:** HABILITADO (repo propio `Tarja.V1`). Se sube el avance.
+- **Producción/VPS:** diferido; se construye local con arquitectura lista para
+  desplegar luego.
+- **Barra de diseño:** funcional con un front **decente** (no premium, no
+  descuidado). Mobile-first, paleta COSCO.
+
+### Reglas y parámetros confirmados
+
+- `Chasis number` de la ficha = `VIN` escaneado/ingresado.
+- El Admin crea usuarios y define su contraseña inicial; **sin** cambio
+  obligatorio en el primer login (v1).
+- Bloqueo por intentos fallidos: **5 intentos → 15 min**.
+- Rate limiting en `/login`: **10 req/min por IP**.
+- PDF **bilingüe EN/ES** (como la ficha).
 
 ---
 
