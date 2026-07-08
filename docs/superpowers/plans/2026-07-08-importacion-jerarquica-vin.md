@@ -108,7 +108,13 @@ En `model BillOfLading`, cambiar `blNumber String @map("bl_number")` por:
   blNumber      String        @unique @map("bl_number")
 ```
 
-y **eliminar** la línea `@@unique([operationId, blNumber])`.
+**eliminar** la línea `@@unique([operationId, blNumber])`, y **añadir**:
+
+```prisma
+  @@index([operationId])
+```
+
+> Sin ese índice, `operation_id` se queda sin cobertura al dropear el unique compuesto, y el `_count: { bills: true }` de `operations.service.ts` degrada a sequential scan.
 
 En `model Vehicle`, cambiar `vin String` por:
 
@@ -145,16 +151,17 @@ CREATE TABLE "ships" (
 );
 CREATE UNIQUE INDEX "ships_name_key" ON "ships"("name");
 
--- 2. Backfill desde operations.ship_name
+-- 2. Backfill desde operations.ship_name, normalizado a MAYUSCULAS.
+--    Sin UPPER(), "Guang He Kou" y "GUANG HE KOU" crearian dos naves distintas.
 INSERT INTO "ships" ("name", "updated_at")
-SELECT DISTINCT TRIM("ship_name"), CURRENT_TIMESTAMP
+SELECT DISTINCT UPPER(TRIM("ship_name")), CURRENT_TIMESTAMP
 FROM "operations"
 WHERE "ship_name" IS NOT NULL AND TRIM("ship_name") <> '';
 
 -- 3. FK en operations
 ALTER TABLE "operations" ADD COLUMN "ship_id" INTEGER;
 UPDATE "operations" o SET "ship_id" = s."id"
-FROM "ships" s WHERE s."name" = TRIM(o."ship_name");
+FROM "ships" s WHERE s."name" = UPPER(TRIM(o."ship_name"));
 ALTER TABLE "operations" ALTER COLUMN "ship_id" SET NOT NULL;
 ALTER TABLE "operations" DROP COLUMN "ship_name";
 ALTER TABLE "operations" ADD CONSTRAINT "operations_ship_id_fkey"
@@ -163,6 +170,8 @@ ALTER TABLE "operations" ADD CONSTRAINT "operations_ship_id_fkey"
 -- 4. Unicidad global
 DROP INDEX IF EXISTS "bills_of_lading_operation_id_bl_number_key";
 CREATE UNIQUE INDEX "bills_of_lading_bl_number_key" ON "bills_of_lading"("bl_number");
+-- operation_id perdio su indice al dropear el unique compuesto; se restituye.
+CREATE INDEX "bills_of_lading_operation_id_idx" ON "bills_of_lading"("operation_id");
 DROP INDEX IF EXISTS "vehicles_operation_id_vin_key";
 CREATE UNIQUE INDEX "vehicles_vin_key" ON "vehicles"("vin");
 
@@ -1222,10 +1231,14 @@ export class ShipsService {
     return this.prisma.ship.findMany({ orderBy: { name: 'asc' } });
   }
 
-  /** Busca la nave por nombre normalizado; la crea si no existe. */
+  /**
+   * Busca la nave por nombre normalizado; la crea si no existe.
+   * Se almacena en MAYUSCULAS: es como vienen los manifiestos y BLs, y hace que
+   * el unique de `ships.name` garantice de verdad una sola fila por nave.
+   */
   async findOrCreate(name: string, tx?: Prisma.TransactionClient) {
     const client = tx ?? this.prisma;
-    const clean = name.trim().replace(/\s+/g, ' ');
+    const clean = name.trim().replace(/\s+/g, ' ').toUpperCase();
     return client.ship.upsert({
       where: { name: clean },
       update: {},
@@ -1762,7 +1775,8 @@ describe('Fase 7 - Importacion desconsolidado + lookup global (e2e)', () => {
       operationType: 'DESCONSOLIDADO',
     });
     operationId = op.body.id;
-    expect(op.body.shipName).toBe('Guang He Kou');
+    // El nombre de nave se normaliza a MAYUSCULAS.
+    expect(op.body.shipName).toBe('GUANG HE KOU');
   });
 
   afterAll(async () => { await app.close(); });
@@ -1797,7 +1811,7 @@ describe('Fase 7 - Importacion desconsolidado + lookup global (e2e)', () => {
 
     expect(res.body).toMatchObject({
       vin: VIN_A, brand: 'JMC', model: 'Grand Vigus',
-      blNumber: BL, shipName: 'Guang He Kou',
+      blNumber: BL, shipName: 'GUANG HE KOU',
       containerNumber: 'FCIU1111111', vehicleStatus: 'PENDIENTE',
       operationId,
     });
