@@ -107,10 +107,22 @@ model User {
   @@map("users")
 }
 
+model Ship {
+  id         Int         @id @default(autoincrement())
+  name       String      @unique
+  status     String      @default("ACTIVE")
+  operations Operation[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@map("ships")
+}
+
 model Operation {
   id            Int             @id @default(autoincrement())
   code          String          @unique
-  shipName      String          @map("ship_name")
+  shipId        Int             @map("ship_id")
+  ship          Ship            @relation(fields: [shipId], references: [id])
   operationType OperationType   @map("operation_type")
   operationDate DateTime?       @map("operation_date")
   portDischarge String?         @map("port_discharge")
@@ -131,7 +143,7 @@ model BillOfLading {
   id            Int           @id @default(autoincrement())
   operationId   Int           @map("operation_id")
   operation     Operation     @relation(fields: [operationId], references: [id])
-  blNumber      String        @map("bl_number")
+  blNumber      String        @unique @map("bl_number")
   bookingNumber String?       @map("booking_number")
   portLoading   String?       @map("port_loading")
   portDischarge String?       @map("port_discharge")
@@ -140,7 +152,7 @@ model BillOfLading {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  @@unique([operationId, blNumber])
+  @@index([operationId])
   @@map("bills_of_lading")
 }
 
@@ -150,7 +162,9 @@ model Vehicle {
   operation       Operation     @relation(fields: [operationId], references: [id])
   billOfLadingId  Int?          @map("bill_of_lading_id")
   billOfLading    BillOfLading? @relation(fields: [billOfLadingId], references: [id])
-  vin             String
+  vin             String        @unique
+  containerNumber String?       @map("container_number")
+  model           String?
   chassisNumber   String?       @map("chassis_number")
   brand           String?
   weight          Float?
@@ -166,8 +180,8 @@ model Vehicle {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  @@unique([operationId, vin])
   @@index([operationId])
+  @@index([containerNumber])
   @@map("vehicles")
 }
 
