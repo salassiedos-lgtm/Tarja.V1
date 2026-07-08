@@ -53,6 +53,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                   Accesorios
                 </Link>
               )}
+              {user.role === 'ADMIN' && (
+                <Link href="/audit" className="hover:text-white">
+                  Auditoría
+                </Link>
+              )}
             </nav>
           </div>
           <div className="flex items-center gap-3">

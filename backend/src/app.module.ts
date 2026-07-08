@@ -14,6 +14,7 @@ import { ImportsModule } from './imports/imports.module';
 import { TarjaModule } from './tarja/tarja.module';
 import { ReportsModule } from './reports/reports.module';
 import { PdfModule } from './pdf/pdf.module';
+import { AuditModule } from './audit/audit.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
@@ -21,6 +22,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }] }),
     PrismaModule,
+    AuditModule,
     AuthModule,
     UsersModule,
     OperationsModule,

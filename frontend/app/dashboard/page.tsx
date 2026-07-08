@@ -51,6 +51,13 @@ export default function DashboardPage() {
             desc="Administrar el catálogo de accesorios del formulario de tarja."
           />
         )}
+        {isAdmin && (
+          <Card
+            href="/audit"
+            title="Auditoría"
+            desc="Registro de acciones del sistema: accesos, tarjas, anulaciones."
+          />
+        )}
       </div>
     </Shell>
   );

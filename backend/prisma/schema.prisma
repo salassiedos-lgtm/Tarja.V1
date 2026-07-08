@@ -102,6 +102,7 @@ model User {
   vehiclesLocked        Vehicle[]              @relation("VehiclesLocked")
   annulmentsAsTarjador  TarjaReportAnnulment[] @relation("AnnulTarjador")
   annulmentsAsSupervisor TarjaReportAnnulment[] @relation("AnnulSupervisor")
+  auditLogs             AuditLog[]
 
   @@map("users")
 }
@@ -280,4 +281,23 @@ model TarjaReportAnnulment {
   updatedAt            DateTime    @updatedAt @map("updated_at")
 
   @@map("tarja_report_annulments")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?     @map("user_id")
+  user        User?    @relation(fields: [userId], references: [id])
+  username    String?
+  role        String?
+  module      String
+  action      String
+  description String?
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  ipAddress   String?  @map("ip_address")
+  deviceInfo  String?  @map("device_info")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("audit_logs")
 }

@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import puppeteer from 'puppeteer';
 import { PrismaService } from '../prisma/prisma.service';
 import { renderReportHtml, type PdfAccessoryRow, type PdfReport } from './report-template';
 
@@ -47,6 +46,8 @@ export class PdfService {
 
     const html = renderReportHtml(report as unknown as PdfReport, accessories, this.logoDataUri);
 
+    // Carga dinamica: puppeteer es ESM-only; evitamos importarlo al cargar el modulo (tests).
+    const { default: puppeteer } = await import('puppeteer');
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],

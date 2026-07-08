@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Workbook } from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 type StringField =
   | 'nave'
@@ -47,7 +48,10 @@ const FIELD_BY_TOKEN: [string, StringField][] = [
 
 @Injectable()
 export class ImportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private normalize(text: string): string {
     return text
@@ -225,6 +229,13 @@ export class ImportsService {
           uploadedById: userId,
         },
       });
+    });
+
+    this.audit.record({
+      userId,
+      module: 'imports',
+      action: 'CONFIRM',
+      description: `${fileName}: ${created} vehiculos creados, ${skipped} omitidos`,
     });
 
     return {

@@ -2,10 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { OperationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOperationDto, UpdateOperationDto } from './dto/operation.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class OperationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   findAll() {
     return this.prisma.operation.findMany({
@@ -23,8 +27,8 @@ export class OperationsService {
     return op;
   }
 
-  create(dto: CreateOperationDto, userId: number) {
-    return this.prisma.operation.create({
+  async create(dto: CreateOperationDto, userId: number) {
+    const op = await this.prisma.operation.create({
       data: {
         code: dto.code,
         shipName: dto.shipName,
@@ -34,6 +38,14 @@ export class OperationsService {
         createdById: userId,
       },
     });
+    this.audit.record({
+      userId,
+      module: 'operations',
+      action: 'CREATE',
+      description: `Operacion ${op.code}`,
+      newValue: op.code,
+    });
+    return op;
   }
 
   async update(id: number, dto: UpdateOperationDto) {

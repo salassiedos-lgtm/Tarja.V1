@@ -262,6 +262,18 @@ export const listReports = (operationId?: number) =>
 export const annulReport = (reportId: number, reason: string, comment?: string) =>
   apiJson<ReportRow>(`/reports/${reportId}/annul`, 'POST', { reason, comment });
 
+export interface AuditLog {
+  id: number;
+  userId: number | null;
+  username: string | null;
+  role: string | null;
+  module: string;
+  action: string;
+  description: string | null;
+  createdAt: string;
+}
+export const listAuditLogs = (limit = 200) => apiGet<AuditLog[]>(`/audit?limit=${limit}`);
+
 export async function openReportPdf(reportId: number): Promise<void> {
   const res = await fetch(`${API}/reports/${reportId}/pdf`, { headers: authHeaders() });
   if (res.status === 401) {

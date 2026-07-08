@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { AuditService } from '../audit/audit.service';
 import { AnnulDto } from './dto/annul.dto';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly audit: AuditService,
   ) {}
 
   listReports(operationId?: number) {
@@ -69,6 +71,12 @@ export class ReportsService {
       reportId,
       operationId: report.operationId,
       vehicleId: report.vehicleId,
+    });
+    this.audit.record({
+      userId: supervisorId,
+      module: 'reports',
+      action: 'ANNUL',
+      description: `Reporte ${reportId}: ${dto.reason}`,
     });
     return updated;
   }

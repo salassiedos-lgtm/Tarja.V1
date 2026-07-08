@@ -8,6 +8,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma, ReportStatus, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { AuditService } from '../audit/audit.service';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -22,6 +23,7 @@ export class TarjaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly audit: AuditService,
   ) {}
 
   async start(dto: StartTarjaDto, tarjadorId: number) {
@@ -84,6 +86,12 @@ export class TarjaService {
         reportId: report.id,
         operationId: dto.operationId,
         vehicleId: report.vehicleId,
+      });
+      this.audit.record({
+        userId: tarjadorId,
+        module: 'tarja',
+        action: 'START',
+        description: `VIN ${vin}`,
       });
       return report;
     } catch (e) {
@@ -180,6 +188,12 @@ export class TarjaService {
       vehicleId: report.vehicleId,
       status,
     });
+    this.audit.record({
+      userId: report.tarjadorId,
+      module: 'tarja',
+      action: 'FINISH',
+      description: `Reporte ${reportId} -> ${status}`,
+    });
     return updated;
   }
 
@@ -232,6 +246,11 @@ export class TarjaService {
         vehicleId: r.vehicleId,
         operationId: r.operationId,
         reportId: r.id,
+      });
+      this.audit.record({
+        module: 'tarja',
+        action: 'AUTO_RELEASE',
+        description: `Vehiculo ${r.vehicleId} auto-liberado (borrador ${r.id})`,
       });
     }
     return stale.length;

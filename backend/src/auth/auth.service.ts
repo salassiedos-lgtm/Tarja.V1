@@ -3,6 +3,7 @@ import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { verifyPassword } from './password.util';
 
 type UserWithRole = Prisma.UserGetPayload<{ include: { role: true } }>;
@@ -16,6 +17,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly audit: AuditService,
   ) {}
 
   async login(username: string, password: string) {
@@ -35,6 +37,7 @@ export class AuthService {
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) {
       await this.registerFailedAttempt(user);
+      this.audit.record({ username, module: 'auth', action: 'LOGIN_FAILED' });
       throw new UnauthorizedException('Credenciales invalidas');
     }
 
@@ -43,6 +46,13 @@ export class AuthService {
       data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
     });
 
+    this.audit.record({
+      userId: user.id,
+      username: user.username,
+      role: user.role.name,
+      module: 'auth',
+      action: 'LOGIN',
+    });
     return this.issueTokens(user);
   }
 
