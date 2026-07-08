@@ -11,6 +11,8 @@ import { OperationsModule } from './operations/operations.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { AccessoriesModule } from './accessories/accessories.module';
 import { ImportsModule } from './imports/imports.module';
+import { TarjaModule } from './tarja/tarja.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { ImportsModule } from './imports/imports.module';
     VehiclesModule,
     AccessoriesModule,
     ImportsModule,
+    TarjaModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

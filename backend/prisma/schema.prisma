@@ -34,6 +34,40 @@ enum VehicleStatus {
   NO_PLANIFICADO
 }
 
+enum ReportStatus {
+  BORRADOR
+  FINALIZADO
+  CON_DANO
+  ANULADO
+  REEMPLAZADO
+}
+
+enum DamageSource {
+  CAUSADO
+  ENCONTRADO
+}
+
+enum DamageOperation {
+  DESCARGA
+  EMBARQUE
+  TRANSITO
+  REESTIBA
+}
+
+enum DamageAffects {
+  CARGA_CHANCAY
+  CARGA_TRANSITO
+}
+
+enum DamageMoment {
+  ANTES_DESCARGA
+  DURANTE_DESCARGA
+  POSTERIOR_DESCARGA
+  ANTES_EMBARQUE
+  DURANTE_EMBARQUE
+  OTROS
+}
+
 model Role {
   id          Int      @id @default(autoincrement())
   name        RoleName @unique
@@ -62,8 +96,12 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  operationsCreated Operation[]       @relation("OperationCreatedBy")
-  importsUploaded   OperationImport[] @relation("ImportUploadedBy")
+  operationsCreated     Operation[]            @relation("OperationCreatedBy")
+  importsUploaded       OperationImport[]      @relation("ImportUploadedBy")
+  tarjaReports          TarjaReport[]          @relation("TarjadorReports")
+  vehiclesLocked        Vehicle[]              @relation("VehiclesLocked")
+  annulmentsAsTarjador  TarjaReportAnnulment[] @relation("AnnulTarjador")
+  annulmentsAsSupervisor TarjaReportAnnulment[] @relation("AnnulSupervisor")
 
   @@map("users")
 }
@@ -81,6 +119,7 @@ model Operation {
   bills         BillOfLading[]
   vehicles      Vehicle[]
   imports       OperationImport[]
+  reports       TarjaReport[]
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
@@ -88,36 +127,43 @@ model Operation {
 }
 
 model BillOfLading {
-  id            Int       @id @default(autoincrement())
-  operationId   Int       @map("operation_id")
-  operation     Operation @relation(fields: [operationId], references: [id])
-  blNumber      String    @map("bl_number")
-  bookingNumber String?   @map("booking_number")
-  portLoading   String?   @map("port_loading")
-  portDischarge String?   @map("port_discharge")
+  id            Int           @id @default(autoincrement())
+  operationId   Int           @map("operation_id")
+  operation     Operation     @relation(fields: [operationId], references: [id])
+  blNumber      String        @map("bl_number")
+  bookingNumber String?       @map("booking_number")
+  portLoading   String?       @map("port_loading")
+  portDischarge String?       @map("port_discharge")
   vehicles      Vehicle[]
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  reports       TarjaReport[]
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   @@unique([operationId, blNumber])
   @@map("bills_of_lading")
 }
 
 model Vehicle {
-  id             Int           @id @default(autoincrement())
-  operationId    Int           @map("operation_id")
-  operation      Operation     @relation(fields: [operationId], references: [id])
-  billOfLadingId Int?          @map("bill_of_lading_id")
-  billOfLading   BillOfLading? @relation(fields: [billOfLadingId], references: [id])
-  vin            String
-  chassisNumber  String?       @map("chassis_number")
-  brand          String?
-  weight         Float?
-  quantity       Int           @default(1)
-  status         VehicleStatus @default(PENDIENTE)
-  isUnplanned    Boolean       @default(false) @map("is_unplanned")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  id              Int           @id @default(autoincrement())
+  operationId     Int           @map("operation_id")
+  operation       Operation     @relation(fields: [operationId], references: [id])
+  billOfLadingId  Int?          @map("bill_of_lading_id")
+  billOfLading    BillOfLading? @relation(fields: [billOfLadingId], references: [id])
+  vin             String
+  chassisNumber   String?       @map("chassis_number")
+  brand           String?
+  weight          Float?
+  quantity        Int           @default(1)
+  status          VehicleStatus @default(PENDIENTE)
+  isUnplanned     Boolean       @default(false) @map("is_unplanned")
+  currentReportId Int?          @unique @map("current_report_id")
+  currentReport   TarjaReport?  @relation("CurrentReport", fields: [currentReportId], references: [id])
+  lockedById      Int?          @map("locked_by")
+  lockedBy        User?         @relation("VehiclesLocked", fields: [lockedById], references: [id])
+  lockedAt        DateTime?     @map("locked_at")
+  reports         TarjaReport[] @relation("VehicleReports")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
 
   @@unique([operationId, vin])
   @@index([operationId])
@@ -125,12 +171,13 @@ model Vehicle {
 }
 
 model Accessory {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  sortOrder Int      @default(0) @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          Int                    @id @default(autoincrement())
+  name        String                 @unique
+  isActive    Boolean                @default(true) @map("is_active")
+  sortOrder   Int                    @default(0) @map("sort_order")
+  reportLinks TarjaReportAccessory[]
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
 
   @@map("accessories")
 }
@@ -149,4 +196,88 @@ model OperationImport {
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("operation_imports")
+}
+
+model TarjaReport {
+  id                Int              @id @default(autoincrement())
+  reportCode        String           @unique @map("report_code")
+  operationId       Int              @map("operation_id")
+  operation         Operation        @relation(fields: [operationId], references: [id])
+  vehicleId         Int              @map("vehicle_id")
+  vehicle           Vehicle          @relation("VehicleReports", fields: [vehicleId], references: [id])
+  billOfLadingId    Int?             @map("bill_of_lading_id")
+  billOfLading      BillOfLading?    @relation(fields: [billOfLadingId], references: [id])
+  tarjadorId        Int              @map("tarjador_id")
+  tarjador          User             @relation("TarjadorReports", fields: [tarjadorId], references: [id])
+  startedAt         DateTime?        @map("started_at")
+  finishedAt        DateTime?        @map("finished_at")
+  durationSeconds   Int?             @map("duration_seconds")
+  hasDamage         Boolean          @default(false) @map("has_damage")
+  damageSource      DamageSource?    @map("damage_source")
+  damageOperation   DamageOperation? @map("damage_operation")
+  damageAffects     DamageAffects?   @map("damage_affects")
+  damageMoment      DamageMoment?    @map("damage_moment")
+  damageMomentOther String?          @map("damage_moment_other")
+  details           String?
+  tarjadorInitials  String?          @map("tarjador_initials")
+  status            ReportStatus     @default(BORRADOR)
+  replacedById      Int?             @map("replaced_by_report_id")
+  replacedBy        TarjaReport?     @relation("ReplacementChain", fields: [replacedById], references: [id])
+  replaces          TarjaReport[]    @relation("ReplacementChain")
+  currentOfVehicle  Vehicle?         @relation("CurrentReport")
+
+  accessories TarjaReportAccessory[]
+  damages     TarjaReportDamage[]
+  annulments  TarjaReportAnnulment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tarja_reports")
+}
+
+model TarjaReportAccessory {
+  id           Int         @id @default(autoincrement())
+  reportId     Int         @map("report_id")
+  report       TarjaReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  accessoryId  Int         @map("accessory_id")
+  accessory    Accessory   @relation(fields: [accessoryId], references: [id])
+  hasAccessory Boolean     @default(false) @map("has_accessory")
+  quantity     Int         @default(0)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  @@unique([reportId, accessoryId])
+  @@map("tarja_report_accessories")
+}
+
+model TarjaReportDamage {
+  id          Int         @id @default(autoincrement())
+  reportId    Int         @map("report_id")
+  report      TarjaReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  description String
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@map("tarja_report_damages")
+}
+
+model TarjaReportAnnulment {
+  id                   Int         @id @default(autoincrement())
+  reportId             Int         @map("report_id")
+  report               TarjaReport @relation(fields: [reportId], references: [id])
+  vehicleId            Int         @map("vehicle_id")
+  tarjadorId           Int?        @map("tarjador_id")
+  tarjador             User?       @relation("AnnulTarjador", fields: [tarjadorId], references: [id])
+  supervisorId         Int?        @map("supervisor_id")
+  supervisor           User?       @relation("AnnulSupervisor", fields: [supervisorId], references: [id])
+  reason               String
+  comment              String?
+  previousReportStatus String?     @map("previous_report_status")
+  newReportStatus      String?     @map("new_report_status")
+  annulledAt           DateTime    @default(now()) @map("annulled_at")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@map("tarja_report_annulments")
 }

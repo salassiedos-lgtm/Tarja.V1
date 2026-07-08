@@ -23,6 +23,31 @@ const ACCESSORIES = [
   'Relays',
 ];
 
+async function upsertUser(
+  username: string,
+  name: string,
+  lastname: string,
+  role: RoleName,
+  password: string,
+  initials: string,
+) {
+  const r = await prisma.role.findUniqueOrThrow({ where: { name: role } });
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.user.upsert({
+    where: { username },
+    update: {},
+    create: {
+      name,
+      lastname,
+      username,
+      email: `${username}@cspcp.local`,
+      passwordHash,
+      initials,
+      roleId: r.id,
+    },
+  });
+}
+
 async function main() {
   const roles: { name: RoleName; description: string }[] = [
     { name: 'ADMIN', description: 'Administrador' },
@@ -37,21 +62,9 @@ async function main() {
     });
   }
 
-  const admin = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMIN' } });
-  const passwordHash = await bcrypt.hash('Admin123!', 10);
-  await prisma.user.upsert({
-    where: { username: 'admin' },
-    update: {},
-    create: {
-      name: 'Administrador',
-      lastname: 'Sistema',
-      username: 'admin',
-      email: 'admin@cspcp.local',
-      passwordHash,
-      initials: 'ADM',
-      roleId: admin.id,
-    },
-  });
+  await upsertUser('admin', 'Administrador', 'Sistema', 'ADMIN', 'Admin123!', 'ADM');
+  await upsertUser('supervisor', 'Supervisor', 'Sistema', 'SUPERVISOR', 'Super123!', 'SUP');
+  await upsertUser('tarjador', 'Tarjador', 'Uno', 'TARJADOR', 'Tarja123!', 'TJ1');
 
   for (let i = 0; i < ACCESSORIES.length; i++) {
     const name = ACCESSORIES[i];
@@ -63,7 +76,7 @@ async function main() {
   }
 
   console.log(
-    `Seed OK: 3 roles, usuario admin (admin / Admin123!), ${ACCESSORIES.length} accesorios`,
+    `Seed OK: roles + usuarios (admin/Admin123!, supervisor/Super123!, tarjador/Tarja123!), ${ACCESSORIES.length} accesorios`,
   );
 }
 
