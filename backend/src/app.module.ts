@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { ShipsModule } from './ships/ships.module';
 import { OperationsModule } from './operations/operations.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { AccessoriesModule } from './accessories/accessories.module';
@@ -25,6 +26,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     AuditModule,
     AuthModule,
     UsersModule,
+    ShipsModule,
     OperationsModule,
     VehiclesModule,
     AccessoriesModule,

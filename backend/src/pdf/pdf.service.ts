@@ -24,7 +24,7 @@ export class PdfService {
       where: { id: reportId },
       include: {
         vehicle: true,
-        operation: true,
+        operation: { include: { ship: true } },
         billOfLading: true,
         tarjador: true,
         accessories: { include: { accessory: true } },
@@ -44,7 +44,19 @@ export class PdfService {
       };
     });
 
-    const html = renderReportHtml(report as unknown as PdfReport, accessories, this.logoDataUri);
+    // `operations` ya no guarda `ship_name`: se resuelve por la relacion `ship`.
+    const data = {
+      ...report,
+      operation: report.operation
+        ? {
+            code: report.operation.code,
+            portDischarge: report.operation.portDischarge,
+            shipName: report.operation.ship.name,
+          }
+        : null,
+    };
+
+    const html = renderReportHtml(data as unknown as PdfReport, accessories, this.logoDataUri);
 
     // Carga dinamica: puppeteer es ESM-only; evitamos importarlo al cargar el modulo (tests).
     const { default: puppeteer } = await import('puppeteer');
