@@ -61,28 +61,38 @@ export function VinScannerModal({
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      streamRef.current = stream;
-      const video = videoRef.current;
-      if (!video) return;
-      video.srcObject = stream;
-      await video.play();
-      setStatus('scanning');
 
-      const detector = createDetector();
-      intervalId = setInterval(() => {
-        detector
-          .detect(video)
-          .then((results) => {
-            const hit = results.find((r) => r.rawValue.trim().length > 0);
-            if (hit) {
-              clearInterval(intervalId);
-              onDecode(hit.rawValue.trim());
-            }
-          })
-          .catch(() => {
-            // Un frame ilegible no es un error: se reintenta en el proximo tick.
-          });
-      }, DETECT_INTERVAL_MS);
+      let found = false;
+      try {
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+        setStatus('scanning');
+
+        const detector = createDetector();
+        intervalId = setInterval(() => {
+          detector
+            .detect(video)
+            .then((results) => {
+              if (cancelled || found) return;
+              const hit = results.find((r) => r.rawValue.trim().length > 0);
+              if (hit) {
+                found = true;
+                clearInterval(intervalId);
+                onDecode(hit.rawValue.trim());
+              }
+            })
+            .catch(() => {
+              // Un frame ilegible no es un error: se reintenta en el proximo tick.
+            });
+        }, DETECT_INTERVAL_MS);
+      } catch {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        if (!cancelled) setStatus('unavailable');
+      }
     }
 
     start();
