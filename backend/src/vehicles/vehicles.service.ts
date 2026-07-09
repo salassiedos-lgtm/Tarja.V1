@@ -3,6 +3,22 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { validateVin } from '../common/vin.util';
+import { getVehicleBlock } from '../common/vehicle-block';
+import { parseVinQuery } from '../common/vin-search.util';
+
+/** Fila de GET /vehicles/search. El frontend nunca interpreta un VehicleStatus. */
+export interface VehicleSearchRow {
+  vehicleId: number;
+  vin: string;
+  blNumber: string | null;
+  shipName: string;
+  operationCode: string;
+  brand: string | null;
+  model: string | null;
+  containerNumber: string | null;
+  blocked: boolean;
+  blockedReason: string | null;
+}
 
 @Injectable()
 export class VehiclesService {
@@ -68,6 +84,49 @@ export class VehiclesService {
       portDischarge: vehicle.operation.portDischarge,
       vehicleStatus: vehicle.status,
     };
+  }
+
+  /**
+   * Busqueda incremental para el tarjador. Sufijo con 4-16 caracteres, exacta
+   * con 17 (lo que entregara el escaner de camara). Solo operaciones ACTIVA.
+   *
+   * El sufijo se traduce a LIKE '%...', cuyo comodin inicial impide usar el
+   * indice vehicles_vin_key: Postgres hace scan secuencial. Con una nave de
+   * unos miles de unidades es irrelevante. Si el universo crece, la salida es
+   * un indice sobre reverse(vin) o uno trigram.
+   */
+  async search(rawQuery: string): Promise<VehicleSearchRow[]> {
+    const q = parseVinQuery(rawQuery);
+    if (q.mode === 'none') return [];
+
+    const rows = await this.prisma.vehicle.findMany({
+      where: {
+        vin: q.mode === 'exact' ? q.vin : { endsWith: q.vin, mode: 'insensitive' },
+        operation: { status: 'ACTIVA' },
+      },
+      orderBy: { vin: 'asc' },
+      take: 20,
+      include: {
+        billOfLading: { select: { blNumber: true } },
+        operation: { select: { id: true, code: true, ship: { select: { name: true } } } },
+      },
+    });
+
+    return rows.map((v) => {
+      const block = getVehicleBlock(v.status);
+      return {
+        vehicleId: v.id,
+        vin: v.vin,
+        blNumber: v.billOfLading?.blNumber ?? null,
+        shipName: v.operation.ship.name,
+        operationCode: v.operation.code,
+        brand: v.brand,
+        model: v.model,
+        containerNumber: v.containerNumber,
+        blocked: block !== null,
+        blockedReason: block?.label ?? null,
+      };
+    });
   }
 
   /**
