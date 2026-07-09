@@ -36,6 +36,11 @@ export function VinScannerModal({
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState<ScanStatus>('starting');
 
+  const onDecodeRef = useRef(onDecode);
+  useEffect(() => {
+    onDecodeRef.current = onDecode;
+  });
+
   useEffect(() => {
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | undefined;
@@ -81,7 +86,7 @@ export function VinScannerModal({
               if (hit) {
                 found = true;
                 clearInterval(intervalId);
-                onDecode(hit.rawValue.trim());
+                onDecodeRef.current(hit.rawValue.trim());
               }
             })
             .catch(() => {
@@ -103,7 +108,7 @@ export function VinScannerModal({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, [onDecode]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-modal="true">
