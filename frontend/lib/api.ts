@@ -37,6 +37,16 @@ export interface Accessory {
   sortOrder: number;
 }
 
+export interface ManagedUser {
+  id: number;
+  username: string;
+  name: string;
+  lastname: string;
+  email: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  role: { name: Role };
+}
+
 export interface Vehicle {
   id: number;
   vin: string;
@@ -178,6 +188,25 @@ export const updateAccessory = (
   d: { name?: string; isActive?: boolean; sortOrder?: number },
 ) => apiJson<Accessory>(`/accessories/${id}`, 'PATCH', d);
 export const deleteAccessory = (id: number) => apiJson<{ id: number }>(`/accessories/${id}`, 'DELETE');
+
+// ---------------- usuarios ----------------
+export const listUsers = () => apiGet<ManagedUser[]>('/users');
+export const createUser = (d: {
+  name: string;
+  lastname: string;
+  username: string;
+  email: string;
+  password: string;
+  role: Role;
+}) => apiJson<ManagedUser>('/users', 'POST', d);
+export const updateUser = (
+  id: number,
+  d: { name?: string; lastname?: string; email?: string; role?: Role },
+) => apiJson<ManagedUser>(`/users/${id}`, 'PATCH', d);
+export const setUserStatus = (id: number, status: 'ACTIVE' | 'INACTIVE') =>
+  apiJson<ManagedUser>(`/users/${id}/status`, 'PATCH', { status });
+export const resetUserPassword = (id: number, password: string) =>
+  apiJson<{ id: number }>(`/users/${id}/password`, 'PATCH', { password });
 
 // ---------------- importación ----------------
 export const previewImport = (operationId: number | string, file: File) =>
