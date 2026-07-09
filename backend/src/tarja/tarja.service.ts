@@ -11,6 +11,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
 import { ReportCodeService } from './report-code.service';
 import { validateVin } from '../common/vin.util';
+import { getVehicleBlock } from '../common/vehicle-block';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -50,17 +51,9 @@ export class TarjaService {
       );
     }
 
-    if (vehicle.status === 'EN_PROCESO') {
-      throw new ConflictException('Este vehiculo esta siendo procesado por otro usuario');
-    }
-    if (vehicle.status === 'TARJADO' || vehicle.status === 'OBSERVADO') {
-      throw new ConflictException(
-        'Este vehiculo ya tiene una tarja valida. Anule antes de re-tarjar.',
-      );
-    }
-    if (vehicle.status === 'BLOQUEADO') {
-      throw new ConflictException('Este vehiculo esta bloqueado por revision operativa');
-    }
+    // La misma regla que usa GET /vehicles/search para pintar la fila en gris.
+    const block = getVehicleBlock(vehicle.status);
+    if (block) throw new ConflictException(block.message);
 
     const operationId = vehicle.operationId;
 
