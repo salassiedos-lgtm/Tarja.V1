@@ -1,26 +1,283 @@
 @import "tailwindcss";
 
+@theme {
+  /* ---- tipografía ---- */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-archivo), var(--font-plex-sans), sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* ---- marca COSCO ---- */
+  --color-navy-950: #04182a;
+  --color-navy-900: #062b48;
+  --color-navy-850: #08355a;
+  --color-navy-800: #0b3d6b;
+  --color-navy-700: #12558f;
+  --color-navy-600: #1a6cb0;
+  --color-navy-200: #b9d2e8;
+  --color-navy-100: #dce9f5;
+  --color-navy-50: #f0f6fb;
+
+  --color-cosco-700: #8d1c2e;
+  --color-cosco-600: #a8253a;
+  --color-cosco-500: #c8102e;
+  --color-cosco-400: #e0455c;
+  --color-cosco-50: #fdeaed;
+
+  /* ---- superficie ---- */
+  --color-canvas: #f2f5f8;
+  --color-ink: #0e1a25;
+  --color-muted: #61748a;
+  --color-line: #dde4ec;
+
+  --color-jade-700: #0a6350;
+  --color-jade-600: #0d7a63;
+  --color-jade-500: #12a37f;
+  --color-jade-50: #e6f4f0;
+  --color-ochre-600: #a56a06;
+  --color-ochre-50: #fbf2e0;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --sidebar-w: 268px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rejilla técnica: plano de estiba */
+.grid-plot {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+.grid-plot-ink {
+  background-image:
+    linear-gradient(rgba(11, 61, 107, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 61, 107, 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Grano sutil sobre el navy */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* Números tabulares para toda cifra operativa */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Entrada escalonada */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sweep {
+  from {
+    width: 0;
+  }
+}
+
+.sweep {
+  animation: sweep 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(200, 16, 46, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(200, 16, 46, 0);
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .sweep,
+  .pulse-dot {
+    animation: none;
+  }
+}
+
+::selection {
+  background: var(--color-navy-800);
+  color: #fff;
+}
+
+/* Scrollbar del sidebar */
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+}
+
+/* ===========================================================
+   Primitivos de campo — pensados para uso en muelle:
+   objetivos táctiles ≥44px, foco visible bajo sol, sin zoom
+   accidental en iOS (font-size ≥16px en inputs).
+   =========================================================== */
+
+/* En la capa `components` para que utilidades como `pl-11` puedan
+   sobrescribir el padding (si no, `.field` gana por orden de cascada). */
+@layer components {
+  .field {
+    width: 100%;
+    border-radius: 12px;
+    border: 1.5px solid var(--color-line);
+    background: #fff;
+    padding-block: 0.75rem;
+    padding-inline: 0.875rem;
+    font-size: 16px;
+    color: var(--color-ink);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+    outline: none;
+  }
+
+  .field::placeholder {
+    color: color-mix(in srgb, var(--color-muted) 65%, transparent);
+  }
+
+  .field:focus {
+    border-color: var(--color-navy-700);
+    box-shadow: 0 0 0 3.5px rgba(18, 85, 143, 0.16);
+  }
+
+  .field:disabled {
+    background: var(--color-navy-50);
+    color: var(--color-muted);
+  }
+
+  .field-invalid,
+  .field-invalid:focus {
+    border-color: var(--color-cosco-500);
+    box-shadow: 0 0 0 3.5px rgba(200, 16, 46, 0.14);
+  }
+}
+
+/* Anillo de foco uniforme para elementos tocables */
+.ring-focus:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4.5px var(--color-navy-700);
+}
+
+/* Quita el flash azul de Android/iOS al tocar */
+.tap {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Barra de acción fija respetando la barra de gestos del móvil */
+.safe-b {
+  padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
+}
+
+/* ===========================================================
+   "Command Deck": fondo insignia para héroes y cabeceras
+   =========================================================== */
+.deck {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(200, 16, 46, 0.24), transparent 46%),
+    linear-gradient(132deg, #04182a 0%, #08355a 54%, #12558f 100%);
+}
+
+.deck-dots {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* ===========================================================
+   Motion
+   =========================================================== */
+@keyframes pop {
+  0% {
+    transform: scale(0.72);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pop {
+  animation: pop 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1.5px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-5px);
+  }
+  40%,
+  60% {
+    transform: translateX(5px);
+  }
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.slide-up {
+  animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop,
+  .shake,
+  .slide-up {
+    animation: none;
+  }
 }

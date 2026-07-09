@@ -1,0 +1,16 @@
+# Override SOLO para pruebas locales (docker compose lo carga automáticamente).
+# Publica puertos al host para acceder desde el navegador.
+# En Coolify este archivo se ignora (Coolify usa solo docker-compose.yml).
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backend:
+    ports:
+      - "3000:3000"
+
+  frontend:
+    ports:
+      - "3001:3000"
