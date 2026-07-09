@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import { Alert, Button, Label } from '@/components/ui';
@@ -40,7 +40,11 @@ export default function TarjaStartPage() {
   const [startError, setStartError] = useState('');
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [scannerSupported] = useState(() => isScannerSupported());
+  const scannerSupported = useSyncExternalStore(
+    () => () => {},
+    isScannerSupported,
+    () => false,
+  );
 
   async function confirm() {
     if (!picked) return;
