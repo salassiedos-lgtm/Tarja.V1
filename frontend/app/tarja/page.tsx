@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import { Alert, Button, Label } from '@/components/ui';
-import { IconArrow, IconSearch, IconShip } from '@/components/icons';
-import { startTarja, type VehicleSearchRow } from '@/lib/api';
+import { VinScannerModal } from '@/components/vin-scanner-modal';
+import { IconArrow, IconCamera, IconSearch, IconShip } from '@/components/icons';
+import { searchVehicles, startTarja, type VehicleSearchRow } from '@/lib/api';
+import { extractVinFromScan, isScannerSupported } from '@/lib/vin-scan';
 import { MIN_QUERY, useVinSearch } from '@/lib/use-vin-search';
 
 /** Resalta el fragmento que el tarjador escribió, al final del VIN. */
@@ -37,6 +39,8 @@ export default function TarjaStartPage() {
   const [picked, setPicked] = useState<VehicleSearchRow | null>(null);
   const [startError, setStartError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scannerSupported] = useState(() => isScannerSupported());
 
   async function confirm() {
     if (!picked) return;
@@ -54,6 +58,27 @@ export default function TarjaStartPage() {
       setBusy(false);
       refresh();
     }
+  }
+
+  async function handleScan(raw: string) {
+    setScanning(false);
+    const vin = extractVinFromScan(raw);
+    if (!vin) {
+      setQuery(raw);
+      return;
+    }
+    try {
+      const found = await searchVehicles(vin);
+      if (found.length === 1 && !found[0].blocked) {
+        setStartError('');
+        setPicked(found[0]);
+        return;
+      }
+    } catch {
+      // Sin conexion: se cae al mismo camino que escribir a mano, que reintenta
+      // la busqueda con debounce y muestra su propio error.
+    }
+    setQuery(vin);
   }
 
   const showEmpty = query.length >= MIN_QUERY && !searching && rows.length === 0 && !searchError;
@@ -151,9 +176,18 @@ export default function TarjaStartPage() {
                   spellCheck={false}
                   inputMode="text"
                   placeholder="Últimos dígitos, ej. 00123"
-                  className="field pl-11 font-mono text-[17px] font-semibold tracking-[0.06em]"
+                  className="field pl-11 pr-12 font-mono text-[17px] font-semibold tracking-[0.06em]"
                 />
-                {/* Anclaje del futuro botón de escáner de cámara. */}
+                {scannerSupported && (
+                  <button
+                    type="button"
+                    onClick={() => setScanning(true)}
+                    aria-label="Escanear VIN"
+                    className="tap ring-focus absolute right-2.5 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-muted transition-colors hover:bg-navy-50 hover:text-navy-800"
+                  >
+                    <IconCamera className="h-[18px] w-[18px]" />
+                  </button>
+                )}
               </div>
               <p className="mt-3 text-[11px] leading-snug text-muted">
                 {query.length < MIN_QUERY
@@ -234,6 +268,7 @@ export default function TarjaStartPage() {
           </div>
         )}
       </div>
+      {scanning && <VinScannerModal onDecode={handleScan} onClose={() => setScanning(false)} />}
     </Shell>
   );
 }
