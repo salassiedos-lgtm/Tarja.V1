@@ -8,18 +8,13 @@ import { Prisma, RoleName } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashPassword } from '../auth/password.util';
+import { type AuthUser } from '../auth/current-user.decorator';
 import {
   CreateUserDto,
   ResetPasswordDto,
   SetStatusDto,
   UpdateUserDto,
 } from './dto/user.dto';
-
-export interface ActingUser {
-  userId: number;
-  username: string;
-  role: string;
-}
 
 const SELECT = {
   id: true,
@@ -42,7 +37,7 @@ export class UsersService {
     return this.prisma.user.findMany({ select: SELECT, orderBy: { id: 'asc' } });
   }
 
-  async create(actor: ActingUser, dto: CreateUserDto) {
+  async create(actor: AuthUser, dto: CreateUserDto) {
     this.ensureCanManageRole(actor, dto.role);
     const role = await this.prisma.role.findUnique({ where: { name: dto.role } });
     if (!role) throw new NotFoundException('Rol no encontrado');
@@ -74,7 +69,7 @@ export class UsersService {
     }
   }
 
-  async update(actor: ActingUser, id: number, dto: UpdateUserDto) {
+  async update(actor: AuthUser, id: number, dto: UpdateUserDto) {
     const target = await this.findOrThrow(id);
     this.ensureCanManageRole(actor, target.role.name);
     if (dto.role) this.ensureCanManageRole(actor, dto.role);
@@ -105,7 +100,7 @@ export class UsersService {
     }
   }
 
-  async setStatus(actor: ActingUser, id: number, dto: SetStatusDto) {
+  async setStatus(actor: AuthUser, id: number, dto: SetStatusDto) {
     if (actor.userId === id) {
       throw new ForbiddenException('No puedes desactivar tu propia cuenta');
     }
@@ -128,7 +123,7 @@ export class UsersService {
     return user;
   }
 
-  async resetPassword(actor: ActingUser, id: number, dto: ResetPasswordDto) {
+  async resetPassword(actor: AuthUser, id: number, dto: ResetPasswordDto) {
     const target = await this.findOrThrow(id);
     this.ensureCanManageRole(actor, target.role.name);
 
@@ -151,16 +146,16 @@ export class UsersService {
     return user;
   }
 
-  private ensureCanManageRole(actor: ActingUser, targetRole: RoleName | string) {
+  private ensureCanManageRole(actor: AuthUser, targetRole: RoleName) {
     if (actor.role === 'ADMIN') return;
     if (actor.role === 'SUPERVISOR' && targetRole === 'TARJADOR') return;
     throw new ForbiddenException('No autorizado para gestionar este usuario');
   }
 
-  private mapUniqueError(err: unknown) {
+  private mapUniqueError(err: unknown): unknown {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return new ConflictException('El usuario o email ya esta en uso');
     }
-    return err as Error;
+    return err;
   }
 }
