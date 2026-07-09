@@ -21,7 +21,7 @@ export default function LoginPage() {
     try {
       const data = await login(username.trim(), password);
       saveSession(data);
-      router.push('/dashboard');
+      router.push('/inicio');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error inesperado');
       setLoading(false);
