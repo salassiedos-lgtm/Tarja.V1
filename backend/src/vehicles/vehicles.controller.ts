@@ -33,6 +33,14 @@ export class VehiclesController {
     return this.service.lookup(vin);
   }
 
+  // Debe declararse ANTES de 'vehicles/:id': Nest empareja en orden de
+  // declaracion y ':id' capturaria la cadena 'search', reventando en
+  // ParseIntPipe con un 400.
+  @Get('vehicles/search')
+  search(@Query('q') q?: string) {
+    return this.service.search(q ?? '');
+  }
+
   @Get('vehicles/:id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);
