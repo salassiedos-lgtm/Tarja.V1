@@ -4,6 +4,10 @@
 FROM node:22-bookworm-slim AS base
 # Puppeteer NO debe descargar su propio Chromium: usamos el del sistema en el runner
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+# Sin el binario `openssl`, Prisma no detecta la version de OpenSSL y genera el
+# motor para debian-openssl-1.1.x, pero bookworm necesita 3.0.x -> fallo al arrancar.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ##########  Dependencias completas (para build)  ##########
@@ -29,11 +33,13 @@ ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 
-# Chromium + fuentes para la generación de PDF con Puppeteer
+# Chromium + fuentes para la generación de PDF con Puppeteer.
+# `openssl` es requisito del motor de Prisma (debian-openssl-3.0.x).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       chromium \
       fonts-liberation \
       fonts-noto-color-emoji \
+      openssl \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

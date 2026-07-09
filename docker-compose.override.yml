@@ -1,11 +1,16 @@
 # Override SOLO para pruebas locales (docker compose lo carga automáticamente).
 # Publica puertos al host para acceder desde el navegador.
 # En Coolify este archivo se ignora (Coolify usa solo docker-compose.yml).
+#
+# Puertos elegidos para NO chocar con el entorno de desarrollo nativo:
+#   5432 -> Postgres instalado en Windows      | contenedor expuesto en 5433
+#   3001 -> `npm run dev` del frontend         | contenedor expuesto en 3002
+#   3010 -> backend en dev                     | contenedor expuesto en 3000
 
 services:
   postgres:
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   backend:
     ports:
@@ -13,4 +18,4 @@ services:
 
   frontend:
     ports:
-      - "3001:3000"
+      - "3002:3000"
