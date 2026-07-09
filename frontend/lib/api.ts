@@ -42,6 +42,7 @@ export interface Vehicle {
   vin: string;
   chassisNumber: string | null;
   brand: string | null;
+  model: string | null;
   weight: number | null;
   quantity: number;
   status: string;
@@ -121,8 +122,8 @@ async function handle<T>(res: Response): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  return handle<T>(await fetch(`${API}${path}`, { headers: authHeaders() }));
+async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return handle<T>(await fetch(`${API}${path}`, { headers: authHeaders(), signal }));
 }
 
 async function apiJson<T>(path: string, method: string, body?: unknown): Promise<T> {
@@ -176,6 +177,7 @@ export const updateAccessory = (
   id: number,
   d: { name?: string; isActive?: boolean; sortOrder?: number },
 ) => apiJson<Accessory>(`/accessories/${id}`, 'PATCH', d);
+export const deleteAccessory = (id: number) => apiJson<{ id: number }>(`/accessories/${id}`, 'DELETE');
 
 // ---------------- importación ----------------
 export const previewImport = (operationId: number | string, file: File) =>
@@ -188,6 +190,23 @@ export const listVehicles = (operationId: number | string, vin?: string) =>
   apiGet<Vehicle[]>(
     `/operations/${operationId}/vehicles${vin ? `?vin=${encodeURIComponent(vin)}` : ''}`,
   );
+
+/** Fila de GET /vehicles/search. `blocked` y `blockedReason` los calcula el backend. */
+export interface VehicleSearchRow {
+  vehicleId: number;
+  vin: string;
+  blNumber: string | null;
+  shipName: string;
+  operationCode: string;
+  brand: string | null;
+  model: string | null;
+  containerNumber: string | null;
+  blocked: boolean;
+  blockedReason: string | null;
+}
+
+export const searchVehicles = (q: string, signal?: AbortSignal) =>
+  apiGet<VehicleSearchRow[]>(`/vehicles/search?q=${encodeURIComponent(q)}`, signal);
 
 // ---------------- tarja ----------------
 export interface ReportAccessory {
@@ -223,8 +242,9 @@ export interface DamageInput {
   descriptions?: string[];
 }
 
-export const startTarja = (operationId: number, vin: string) =>
-  apiJson<TarjaReport>('/tarja/start', 'POST', { operationId, vin });
+// El backend resuelve la operacion desde el VIN (unico global): no recibe operationId.
+export const startTarja = (vin: string) =>
+  apiJson<TarjaReport>('/tarja/start', 'POST', { vin });
 export const getReport = (id: number | string) => apiGet<TarjaReport>(`/tarja/${id}`);
 export const setReportAccessories = (
   id: number | string,
@@ -248,13 +268,24 @@ export interface ReportRow {
   status: string;
   hasDamage: boolean;
   durationSeconds: number | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  updatedAt?: string;
   vehicle?: { vin: string };
   tarjador?: { username: string; initials: string | null };
-  operation?: { code: string };
+  operation?: { code: string; shipName?: string };
+}
+export interface DashboardStats {
+  tarjadas: number;
+  enProceso: number;
+  conDano: number;
+  avgDurationSeconds: number;
+  activeShips: number;
 }
 export interface DashboardData {
-  operations: (Operation & { _count?: { vehicles: number } })[];
+  operations: (Operation & { _count?: { vehicles: number }; doneVehicles?: number })[];
   recent: ReportRow[];
+  stats: DashboardStats;
 }
 
 export const getSupervisorDashboard = () => apiGet<DashboardData>('/dashboard/supervisor');

@@ -1,52 +1,62 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import { Alert, Button, Label } from '@/components/ui';
-import { IconArrow, IconCheck, IconSearch, IconShip } from '@/components/icons';
-import { listOperations, startTarja, type Operation } from '@/lib/api';
+import { IconArrow, IconSearch, IconShip } from '@/components/icons';
+import { startTarja, type VehicleSearchRow } from '@/lib/api';
+import { MIN_QUERY, useVinSearch } from '@/lib/use-vin-search';
 
-const TYPE_LABEL: Record<string, string> = {
-  ROLL_ON_ROLL_OFF: 'RO-RO',
-  DESCONSOLIDADO: 'Desconsolidado',
-};
+/** Resalta el fragmento que el tarjador escribió, al final del VIN. */
+function VinHighlight({ vin, query }: { vin: string; query: string }) {
+  const at = vin.length - query.length;
+  const matches = query.length > 0 && at >= 0 && vin.slice(at) === query;
+  if (!matches) return <span className="font-mono">{vin}</span>;
+  return (
+    <span className="font-mono">
+      <span className="text-muted">{vin.slice(0, at)}</span>
+      <span className="font-bold text-navy-900">{query}</span>
+    </span>
+  );
+}
+
+function RowMeta({ row }: { row: VehicleSearchRow }) {
+  return (
+    <span className="mt-1 flex items-center gap-2 text-[10.5px] text-muted">
+      <span className="truncate font-mono">{row.blNumber ?? 'sin BL'}</span>
+      <span className="shrink-0">·</span>
+      <span className="truncate">{row.shipName}</span>
+    </span>
+  );
+}
 
 export default function TarjaStartPage() {
   const router = useRouter();
-  const [ops, setOps] = useState<Operation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [operationId, setOperationId] = useState<number | null>(null);
-  const [vin, setVin] = useState('');
-  const [error, setError] = useState('');
+  const { query, setQuery, rows, searching, error: searchError, refresh } = useVinSearch();
+  const [picked, setPicked] = useState<VehicleSearchRow | null>(null);
+  const [startError, setStartError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    listOperations()
-      .then((o) => {
-        const active = o.filter((x) => x.status === 'ACTIVA');
-        setOps(active);
-        if (active[0]) setOperationId(active[0].id);
-      })
-      .catch(() => setError('No se pudieron cargar las operaciones.'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function start(e: React.FormEvent) {
-    e.preventDefault();
-    if (!operationId || !vin.trim()) return;
+  async function confirm() {
+    if (!picked) return;
     setBusy(true);
-    setError('');
+    setStartError('');
     try {
-      const r = await startTarja(operationId, vin.trim());
+      const r = await startTarja(picked.vin);
       router.push(`/tarja/${r.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo iniciar la tarja');
+      // Carrera: otro tarjador tomó el VIN entre que se pintó la lista y este
+      // click. Volvemos a la lista y la refrescamos: el VIN aparecerá en gris
+      // con su motivo, que explica el fallo mejor que un error rojo suelto.
+      setStartError(err instanceof Error ? err.message : 'No se pudo iniciar la tarja');
+      setPicked(null);
       setBusy(false);
+      refresh();
     }
   }
 
-  const ready = Boolean(operationId) && vin.trim().length > 0;
+  const showEmpty = query.length >= MIN_QUERY && !searching && rows.length === 0 && !searchError;
 
   return (
     <Shell>
@@ -62,121 +72,167 @@ export default function TarjaStartPage() {
               Nueva tarja<span className="text-cosco-400">.</span>
             </h1>
             <p className="mt-2.5 max-w-md text-[13px] leading-relaxed text-white/55">
-              Selecciona la nave en operación e ingresa el VIN o número de chasis de la unidad.
+              Ingresa los últimos dígitos del VIN y elige la unidad de la lista.
             </p>
           </div>
         </header>
 
-        <form onSubmit={start} className="mt-5 space-y-5">
-          {/* ---------- operación ---------- */}
+        {picked ? (
+          /* ---------- confirmación ---------- */
           <section
-            className="rise overflow-hidden rounded-2xl border border-line bg-white p-4 sm:p-5"
-            style={{ animationDelay: '80ms' }}
+            className="rise mt-5 overflow-hidden rounded-2xl border border-line bg-white p-4 sm:p-5"
+            aria-label="Confirmar unidad"
           >
-            <Label>Operación activa</Label>
+            <Label>Confirma la unidad</Label>
+            <p className="mt-1 break-all font-mono text-[19px] font-bold tracking-[0.06em] text-navy-900">
+              {picked.vin}
+            </p>
 
-            {loading ? (
-              <div className="mt-1 h-[70px] animate-pulse rounded-xl bg-navy-50" />
-            ) : ops.length === 0 ? (
-              <div className="mt-1 flex items-center gap-3 rounded-xl border border-dashed border-line bg-canvas px-4 py-5">
-                <IconShip className="h-5 w-5 shrink-0 text-muted" />
-                <p className="text-[12.5px] text-muted">
-                  No hay operaciones activas. Pide a un supervisor que active una nave.
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-[12.5px]">
+              {(
+                [
+                  ['BL', picked.blNumber],
+                  ['Nave', picked.shipName],
+                  ['Marca', picked.brand],
+                  ['Modelo', picked.model],
+                  ['Contenedor', picked.containerNumber],
+                ] as const
+              ).map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-[10px] uppercase tracking-[0.12em] text-muted">{k}</dt>
+                  <dd className="mt-0.5 font-medium text-navy-900">{v || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {startError && (
+              <div className="mt-4">
+                <Alert>{startError}</Alert>
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-2.5">
+              <Button type="button" full size="lg" disabled={busy} onClick={confirm}>
+                {busy ? (
+                  'Iniciando…'
+                ) : (
+                  <>
+                    Iniciar tarja
+                    <IconArrow className="h-[18px] w-[18px]" />
+                  </>
+                )}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setPicked(null)}
+                className="tap ring-focus rounded-xl border border-line py-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-navy-50/50"
+              >
+                Volver a la búsqueda
+              </button>
+            </div>
+          </section>
+        ) : (
+          /* ---------- búsqueda ---------- */
+          <div className="mt-5 space-y-5">
+            <section
+              className="rise overflow-hidden rounded-2xl border border-line bg-white p-4 sm:p-5"
+              style={{ animationDelay: '80ms' }}
+            >
+              <Label htmlFor="vin">VIN</Label>
+              <div className="relative">
+                <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted" />
+                <input
+                  id="vin"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  autoFocus
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  inputMode="text"
+                  placeholder="Últimos dígitos, ej. 00123"
+                  className="field pl-11 font-mono text-[17px] font-semibold tracking-[0.06em]"
+                />
+                {/* Anclaje del futuro botón de escáner de cámara. */}
+              </div>
+              <p className="mt-3 text-[11px] leading-snug text-muted">
+                {query.length < MIN_QUERY
+                  ? `Ingresa al menos los últimos ${MIN_QUERY} dígitos del VIN`
+                  : `${query.length} car.`}
+              </p>
+            </section>
+
+            {startError && <Alert>{startError}</Alert>}
+            {searchError && <Alert>{searchError}</Alert>}
+
+            {query.length >= MIN_QUERY && searching && (
+              <div className="grid gap-2.5" aria-busy>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-[68px] animate-pulse rounded-xl bg-navy-50" />
+                ))}
+              </div>
+            )}
+
+            {showEmpty && (
+              <div className="rise flex items-start gap-3 rounded-2xl border border-dashed border-line bg-canvas px-4 py-5">
+                <IconShip className="mt-0.5 h-5 w-5 shrink-0 text-muted" />
+                <p className="text-[12.5px] leading-relaxed text-muted">
+                  Ningún VIN de las naves en operación termina en{' '}
+                  <span className="font-mono font-semibold text-navy-900">{query}</span>. Verifica
+                  los dígitos o avisa al supervisor.
                 </p>
               </div>
-            ) : (
-              <div className="mt-1 grid gap-2.5">
-                {ops.map((o) => {
-                  const on = operationId === o.id;
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setOperationId(o.id)}
-                      className={`tap ring-focus flex items-center gap-3.5 rounded-xl border p-3.5 text-left transition-all duration-150 active:scale-[0.985] ${
-                        on
-                          ? 'border-navy-700 bg-navy-700/[0.06]'
-                          : 'border-line bg-white hover:border-navy-200 hover:bg-navy-50/50'
-                      }`}
-                    >
-                      <span
-                        className={`grid h-11 w-11 shrink-0 place-items-center rounded-[11px] transition-colors ${
-                          on ? 'bg-navy-800 text-white' : 'bg-navy-50 text-navy-800 ring-1 ring-navy-100'
-                        }`}
+            )}
+
+            {!searching && rows.length > 0 && (
+              <ul className="grid gap-2.5">
+                {rows.map((r) =>
+                  r.blocked ? (
+                    <li key={r.vehicleId}>
+                      {/* Un boton deshabilitado es la semantica exacta: un control
+                          presente que no se puede activar. El lector de pantalla
+                          lo anuncia asi, y el motivo va en el propio texto. */}
+                      <button
+                        type="button"
+                        disabled
+                        className="flex w-full cursor-not-allowed items-center gap-3.5 rounded-xl border border-line bg-white p-3.5 text-left opacity-55"
                       >
-                        <IconShip className="h-[21px] w-[21px]" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-display text-[14px] font-bold tracking-tight text-navy-900">
-                          {o.shipName}
-                        </span>
-                        <span className="mt-1 flex items-center gap-2">
-                          <span className="truncate font-mono text-[10.5px] text-muted">
-                            {o.code}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] tracking-tight">
+                            <VinHighlight vin={r.vin} query={query} />
                           </span>
-                          <span className="shrink-0 rounded border border-line px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.1em] text-muted">
-                            {TYPE_LABEL[o.operationType] ?? o.operationType}
+                          <RowMeta row={r} />
+                        </span>
+                        <span className="shrink-0 rounded border border-line px-2 py-1 text-[9.5px] font-medium uppercase tracking-[0.08em] text-muted">
+                          {r.blockedReason}
+                        </span>
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={r.vehicleId}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStartError('');
+                          setPicked(r);
+                        }}
+                        className="tap ring-focus flex w-full items-center gap-3.5 rounded-xl border border-line bg-white p-3.5 text-left transition-all duration-150 hover:border-navy-200 hover:bg-navy-50/50 active:scale-[0.985]"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14px] tracking-tight">
+                            <VinHighlight vin={r.vin} query={query} />
                           </span>
+                          <RowMeta row={r} />
                         </span>
-                      </span>
-                      {on && (
-                        <span className="pop grid h-5 w-5 shrink-0 place-items-center rounded-full bg-navy-800 text-white">
-                          <IconCheck className="h-3 w-3" strokeWidth={3} />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                        <IconArrow className="h-[18px] w-[18px] shrink-0 text-muted" />
+                      </button>
+                    </li>
+                  ),
+                )}
+              </ul>
             )}
-          </section>
-
-          {/* ---------- VIN ---------- */}
-          <section
-            className="rise overflow-hidden rounded-2xl border border-line bg-white p-4 sm:p-5"
-            style={{ animationDelay: '140ms' }}
-          >
-            <Label htmlFor="vin">VIN / Chasis</Label>
-            <div className="relative">
-              <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted" />
-              <input
-                id="vin"
-                value={vin}
-                onChange={(e) => setVin(e.target.value.toUpperCase().trim())}
-                autoFocus
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                inputMode="text"
-                placeholder="LSGKB54E9DL000000"
-                className="field pl-11 font-mono text-[17px] font-semibold tracking-[0.06em]"
-              />
-            </div>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-[11px] leading-snug text-muted">
-                Escáner de cámara pendiente de habilitar. Por ahora, ingreso manual.
-              </p>
-              <span className="tnum shrink-0 font-mono text-[10.5px] text-muted">
-                {vin.length} car.
-              </span>
-            </div>
-          </section>
-
-          {error && <Alert>{error}</Alert>}
-
-          <Button full size="lg" disabled={busy || !ready}>
-            {busy ? (
-              'Iniciando…'
-            ) : (
-              <>
-                Iniciar tarja
-                <IconArrow className="h-[18px] w-[18px]" />
-              </>
-            )}
-          </Button>
-        </form>
+          </div>
+        )}
       </div>
     </Shell>
   );
