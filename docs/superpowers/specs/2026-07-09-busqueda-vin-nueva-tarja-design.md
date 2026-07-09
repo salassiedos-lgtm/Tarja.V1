@@ -84,10 +84,20 @@ dentro de `start()` (`tarja.service.ts:53-63`). Se extrae a una función pura en
 | `VehicleStatus` | Resultado |
 |---|---|
 | `PENDIENTE` | `null` — tarjable |
+| `REABIERTO` | `null` — tarjable |
+| `NO_PLANIFICADO` | `null` — tarjable |
 | `EN_PROCESO` | En proceso por otro tarjador |
 | `TARJADO` | Ya tarjado |
 | `OBSERVADO` | Ya tarjado (con observaciones) |
 | `BLOQUEADO` | Bloqueado por revisión operativa |
+
+**Hallazgo durante la implementación.** El enum tiene **siete** estados, no cinco. `REABIERTO` y
+`NO_PLANIFICADO` no aparecían en ninguno de los `if` de `start()`, así que caían por defecto en
+"tarjable" sin que nadie lo hubiera decidido explícitamente. Se preserva ese comportamiento, ahora
+declarado: `REABIERTO` lo deja un reporte anulado (`reports.service.ts:65`), y anular es justamente
+lo que habilita re-tarjar; `NO_PLANIFICADO` está en el schema pero ningún servicio lo asigna. El
+test de exhaustividad sobre `Object.values(VehicleStatus)` es lo que sacó esto a la luz, y es lo
+que impedirá que un octavo estado se cuele sin decisión.
 
 `start()` la consulta para lanzar sus `ConflictException` y `search()` la consulta para marcar la
 fila. Una sola definición: si mañana se agrega un `VehicleStatus`, no puede divergir entre la
@@ -179,12 +189,18 @@ websocket `vin.unknown` (`tarja.service.ts:39-51`). Se deja intacta.
 - 17 caracteres producen match exacto.
 - Menos de 4 caracteres devuelven `[]`.
 - Un VIN de una operación no `ACTIVA` no aparece.
-- Cada uno de los cinco `VehicleStatus` produce el `blocked` / `blockedReason` correcto.
+- Cada `VehicleStatus` produce el `blocked` / `blockedReason` correcto, y la lista está cubierta
+  de forma exhaustiva contra el enum de Prisma.
 
 **Backend — el refactor:** un test que verifique que `start()` y `search()` coinciden sobre qué
 estados son tarjables. Es el test que protege `getVehicleBlock` de divergir.
 
-**Frontend:** el debounce y el descarte de respuestas obsoletas. Es la única lógica no trivial.
+**Frontend:** no hay runner de tests en `frontend/` (ni jest, ni vitest, ni testing-library), y
+montarlo es una decisión de infraestructura fuera de este alcance. El debounce y el descarte de
+respuestas obsoletas viven aislados en el hook `useVinSearch`, y se verifican **ejecutando la app**
+con un navegador: se cuenta que teclear `0,00,001,0012,00123` produzca **una sola** petición a
+`/vehicles/search`, y se fuerza la carrera del 409 cambiando el estado del vehículo en la base con
+la tarjeta de confirmación ya abierta.
 
 ## Consecuencia conocida
 
