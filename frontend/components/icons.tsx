@@ -65,6 +65,13 @@ export const IconSearch = (p: P) => (
   </svg>
 );
 
+export const IconCamera = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M4 8.2A1.7 1.7 0 0 1 5.7 6.5h2.1l1-1.6a1.2 1.2 0 0 1 1-.55h4.4a1.2 1.2 0 0 1 1 .55l1 1.6h2.1A1.7 1.7 0 0 1 20 8.2v9.1a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 17.3Z" />
+    <circle cx="12" cy="12.6" r="3.4" />
+  </svg>
+);
+
 export const IconBell = (p: P) => (
   <svg {...base} {...p}>
     <path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5 1.5 5H5s1.5-1 1.5-5Z" />
