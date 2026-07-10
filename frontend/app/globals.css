@@ -380,4 +380,7 @@ body {
   .error { background: var(--color-red-50); color: var(--color-red); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
   .success { background: var(--color-green-50); color: var(--color-green); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
   .ver { text-align: center; color: var(--color-muted); font-size: 12px; margin-top: 10px; }
+
+  .login-wrap { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 24px; max-width: 420px; margin: 0 auto; }
+  .login-logo-img { display: block; width: 148px; height: auto; margin: 0 auto 10px; }
 }
