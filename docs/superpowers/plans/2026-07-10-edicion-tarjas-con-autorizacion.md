@@ -849,6 +849,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -920,10 +921,13 @@ export class EditRequestsService {
     if (req.status !== 'PENDIENTE') throw new BadRequestException('La solicitud ya fue resuelta');
 
     const status = dto.approve ? 'APROBADA' : 'RECHAZADA';
-    const updated = await this.prisma.tarjaEditRequest.update({
-      where: { id: requestId },
+    // CAS: cierra la carrera entre dos supervisores resolviendo a la vez.
+    const changed = await this.prisma.tarjaEditRequest.updateMany({
+      where: { id: requestId, status: 'PENDIENTE' },
       data: { status, resolvedById: resolverId, resolvedAt: new Date(), resolveComment: dto.comment ?? null },
     });
+    if (changed.count === 0) throw new BadRequestException('La solicitud ya fue resuelta');
+    const updated = await this.prisma.tarjaEditRequest.findUnique({ where: { id: requestId } });
     this.audit.record({
       userId: resolverId,
       module: 'tarja',
@@ -945,11 +949,24 @@ export class EditRequestsService {
     if (req.status !== 'APROBADA') throw new BadRequestException('Solo se cancela una edición autorizada en curso');
 
     await this.prisma.$transaction(async (tx) => {
+      // CAS: cierra la carrera con finish() (que pasa APROBADA→COMPLETADA).
+      const closed = await tx.tarjaEditRequest.updateMany({
+        where: { id: requestId, status: 'APROBADA' },
+        data: {
+          status: 'RECHAZADA',
+          resolvedById: resolverId,
+          resolvedAt: new Date(),
+          resolveComment: 'Edición cancelada por el supervisor',
+        },
+      });
+      if (closed.count === 0) {
+        throw new BadRequestException('La edición ya no está en curso (fue finalizada)');
+      }
       await tx.tarjaReport.update({
         where: { id: req.reportId },
         data: {
           status: req.report.hasDamage ? 'CON_DANO' : 'FINALIZADO',
-          editSnapshot: null,
+          editSnapshot: Prisma.DbNull,
         },
       });
       await tx.vehicle.update({
@@ -961,7 +978,6 @@ export class EditRequestsService {
           currentReportId: req.reportId,
         },
       });
-      await tx.tarjaEditRequest.update({ where: { id: requestId }, data: { status: 'RECHAZADA' } });
     });
     this.audit.record({
       userId: resolverId,
