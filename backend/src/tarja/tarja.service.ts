@@ -192,8 +192,6 @@ export class TarjaService {
   async finish(reportId: number, dto: FinishTarjaDto) {
     const report = await this.getDraft(reportId);
     const now = new Date();
-    // Si es un re-finish de una reapertura (ya tenía finishedAt), conserva la
-    // duración original: el tiempo de edición dentro de la ventana no cuenta.
     const durationSeconds =
       report.finishedAt != null
         ? report.durationSeconds
@@ -203,6 +201,9 @@ export class TarjaService {
     const status: ReportStatus = report.hasDamage ? 'CON_DANO' : 'FINALIZADO';
     const vehicleStatus: VehicleStatus = report.hasDamage ? 'OBSERVADO' : 'TARJADO';
     const { reportDate, workShift } = limaShift(now);
+
+    // ¿Es el cierre de una edición? Entonces computamos el diff contra el snapshot.
+    const isEdit = report.editSnapshot != null;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const r = await tx.tarjaReport.update({
@@ -215,26 +216,57 @@ export class TarjaService {
           workShift,
           details: dto.details ?? null,
           tarjadorInitials: dto.initials ?? null,
+          editSnapshot: Prisma.DbNull,
         },
       });
       await tx.vehicle.update({
         where: { id: report.vehicleId },
         data: { status: vehicleStatus, lockedById: null, lockedAt: null },
       });
+      // Cerrar una solicitud aprobada asociada, si la hubiera.
+      if (isEdit) {
+        await tx.tarjaEditRequest.updateMany({
+          where: { reportId, status: 'APROBADA' },
+          data: { status: 'COMPLETADA' },
+        });
+      }
       return r;
     });
+
+    if (isEdit) {
+      const after = await this.prisma.tarjaReport.findUnique({
+        where: { id: reportId },
+        include: {
+          accessories: { include: { accessory: { select: { name: true } } } },
+          damages: { select: { description: true } },
+        },
+      });
+      const before = report.editSnapshot as unknown as ReturnType<typeof snapshotOf>;
+      const diff = computeEditDiff(before, snapshotOf(after!));
+      this.audit.record({
+        userId: report.tarjadorId,
+        module: 'tarja',
+        action: 'EDITADA',
+        description: diff.changed
+          ? `Editó ${report.reportCode} · ${diff.summary}`
+          : `Editó ${report.reportCode} · sin cambios`,
+        oldValue: diff.oldJson,
+        newValue: diff.newJson,
+      });
+    } else {
+      this.audit.record({
+        userId: report.tarjadorId,
+        module: 'tarja',
+        action: 'FINISH',
+        description: `Reporte ${reportId} -> ${status}`,
+      });
+    }
 
     this.realtime.emit('report.finished', {
       reportId,
       operationId: report.operationId,
       vehicleId: report.vehicleId,
       status,
-    });
-    this.audit.record({
-      userId: report.tarjadorId,
-      module: 'tarja',
-      action: 'FINISH',
-      description: `Reporte ${reportId} -> ${status}`,
     });
     return updated;
   }
