@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Car, CheckCircle2, Clock } from 'lucide-react';
+import { Search } from 'lucide-react';
 import Shell from '@/components/shell';
 import { getBlBoard, type BlBoardRow } from '@/lib/api';
 
@@ -88,36 +88,36 @@ export default function TableroPage() {
         </div>
       ) : (
         visibleRows!.map((bl) => (
-          <div key={bl.billOfLadingId} className={`card bl bl-${pctClass(bl.percent)}`}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, wordBreak: 'break-all' }}>
-                {bl.blNumber}
-              </div>
-              <div className="muted" style={{ marginTop: 2 }}>
-                {bl.shipName} · {bl.containers} {bl.containers === 1 ? 'contenedor' : 'contenedores'}
-              </div>
-            </div>
-
-            <div className="bl-progress">
-              <div className="bar">
-                <div className="bar-fill" style={{ width: `${bl.percent}%` }} />
+          <div key={bl.billOfLadingId} className="card bl">
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, wordBreak: 'break-all' }}>
+                  {bl.blNumber}
+                </div>
+                <div className="muted" style={{ marginTop: 2 }}>
+                  {bl.shipName} · {bl.containers} {bl.containers === 1 ? 'contenedor' : 'contenedores'}
+                </div>
               </div>
               <span className={`bl-pct ${pctClass(bl.percent)}`}>{bl.percent}%</span>
             </div>
 
-            <div className="bl-chips">
-              <span className="chip">
-                <Car className="h-4 w-4" aria-hidden="true" />
-                <span className="tnum">{bl.total}</span>
-              </span>
-              <span className="chip ok">
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                <span className="tnum">{bl.done}</span>
-              </span>
-              <span className="chip warn">
-                <Clock className="h-4 w-4" aria-hidden="true" />
-                <span className="tnum">{bl.pending}</span>
-              </span>
+            <div className="bar">
+              <div className="bar-fill" style={{ width: `${bl.percent}%` }} />
+            </div>
+
+            <div className="bl-counts">
+              <div className="cell">
+                <span className="n tnum">{bl.total}</span>
+                <span className="l">Chasis</span>
+              </div>
+              <div className="cell ok">
+                <span className="n tnum">{bl.done}</span>
+                <span className="l">Tarjados</span>
+              </div>
+              <div className="cell warn">
+                <span className="n tnum">{bl.pending}</span>
+                <span className="l">Por tarjar</span>
+              </div>
             </div>
 
             <button
