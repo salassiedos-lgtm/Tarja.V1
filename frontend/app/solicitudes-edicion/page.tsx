@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import {
+  cancelEditRequest,
   getUser,
   listEditRequests,
   resolveEditRequest,
@@ -14,7 +15,8 @@ import {
 export default function SolicitudesEdicion() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [rows, setRows] = useState<EditRequestRow[]>([]);
+  const [pending, setPending] = useState<EditRequestRow[]>([]);
+  const [approved, setApproved] = useState<EditRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
 
@@ -34,7 +36,12 @@ export default function SolicitudesEdicion() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await listEditRequests('PENDIENTE'));
+      const [p, a] = await Promise.all([
+        listEditRequests('PENDIENTE'),
+        listEditRequests('APROBADA'),
+      ]);
+      setPending(p);
+      setApproved(a);
     } finally {
       setLoading(false);
     }
@@ -57,41 +64,94 @@ export default function SolicitudesEdicion() {
     }
   }
 
+  async function cancel(id: number) {
+    if (!window.confirm('¿Cancelar esta edición autorizada? El tarjador perderá el permiso de edición en curso.')) {
+      return;
+    }
+    setBusy(id);
+    try {
+      await cancelEditRequest(id);
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!user) return null;
 
   return (
     <Shell title="Solicitudes de edición" onBack={() => router.push('/inicio')}>
       {loading ? (
         <div className="empty">Cargando…</div>
-      ) : rows.length === 0 ? (
-        <div className="empty">No hay solicitudes pendientes.</div>
       ) : (
-        rows.map((r) => (
-          <div key={r.id} className="card">
-            <div className="mono">
-              {r.report.reportCode} · {r.report.vehicle?.vin ?? '—'}
-            </div>
-            <div className="muted">
-              {r.report.operation?.ship.name ?? '—'} · {r.report.operation?.code ?? '—'}
-            </div>
-            <div>
-              Solicita: {r.requestedBy.name} {r.requestedBy.lastname}
-            </div>
-            <div>Motivo: {r.reason}</div>
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn small" disabled={busy === r.id} onClick={() => resolve(r.id, true)}>
-                Aprobar
-              </button>
-              <button
-                className="btn small ghost"
-                disabled={busy === r.id}
-                onClick={() => resolve(r.id, false)}
-              >
-                Rechazar
-              </button>
-            </div>
-          </div>
-        ))
+        <>
+          <h3 className="muted" style={{ marginTop: 0 }}>
+            Pendientes de autorización
+          </h3>
+          {pending.length === 0 ? (
+            <div className="empty">No hay solicitudes pendientes.</div>
+          ) : (
+            pending.map((r) => (
+              <div key={r.id} className="card">
+                <div className="mono">
+                  {r.report.reportCode} · {r.report.vehicle?.vin ?? '—'}
+                </div>
+                <div className="muted">
+                  {r.report.operation?.ship.name ?? '—'} · {r.report.operation?.code ?? '—'}
+                </div>
+                <div>
+                  Solicita: {r.requestedBy.name} {r.requestedBy.lastname}
+                </div>
+                <div>Motivo: {r.reason}</div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn small" disabled={busy === r.id} onClick={() => resolve(r.id, true)}>
+                    Aprobar
+                  </button>
+                  <button
+                    className="btn small ghost"
+                    disabled={busy === r.id}
+                    onClick={() => resolve(r.id, false)}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+
+          <h3 className="muted" style={{ marginTop: 24 }}>
+            En edición (autorizadas)
+          </h3>
+          {approved.length === 0 ? (
+            <div className="empty">No hay ediciones autorizadas en curso.</div>
+          ) : (
+            approved.map((r) => (
+              <div key={r.id} className="card">
+                <div className="mono">
+                  {r.report.reportCode} · {r.report.vehicle?.vin ?? '—'}
+                </div>
+                <div className="muted">
+                  {r.report.operation?.ship.name ?? '—'} · {r.report.operation?.code ?? '—'}
+                </div>
+                <div>
+                  Solicita: {r.requestedBy.name} {r.requestedBy.lastname}
+                </div>
+                <div>Motivo: {r.reason}</div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button
+                    className="btn small ghost"
+                    disabled={busy === r.id}
+                    onClick={() => cancel(r.id)}
+                  >
+                    Cancelar edición
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </>
       )}
     </Shell>
   );
