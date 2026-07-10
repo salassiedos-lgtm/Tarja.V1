@@ -49,8 +49,8 @@ export class VehiclesController {
   }
 
   @Get('naves/:id/vehicles')
-  naveVehicles(@Param('id', ParseIntPipe) id: number) {
-    return this.service.naveVehicles(id);
+  naveVehicles(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.naveVehicles(id, user);
   }
 
   // Tablero por B/L (se mantiene por compatibilidad; el frontend usa el de nave).

@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { validateVin } from '../common/vin.util';
 import { getVehicleBlock } from '../common/vehicle-block';
 import { parseVinQuery } from '../common/vin-search.util';
+import { reopenSecondsLeft } from '../tarja/edit.util';
 
 /** Fila de GET /vehicles/search. El frontend nunca interpreta un VehicleStatus. */
 export interface VehicleSearchRow {
@@ -291,16 +292,13 @@ export class VehiclesService {
       .sort((a, b) => a.percent - b.percent || a.shipName.localeCompare(b.shipName));
   }
 
-  /** Todos los chasis de una NAVE (operación) para la lista de tareas. */
-  async naveVehicles(operationId: number) {
+  /** Todos los chasis de una NAVE (operación) para la lista de tareas.
+   *  Enriquecemos los realizados con el dueño y el estado de edición; si el
+   *  llamador es TARJADOR, solo ve como "realizados" los suyos. */
+  async naveVehicles(operationId: number, user?: { userId: number; role: string }) {
     const op = await this.prisma.operation.findUnique({
       where: { id: operationId },
-      select: {
-        id: true,
-        code: true,
-        status: true,
-        ship: { select: { name: true } },
-      },
+      select: { id: true, code: true, status: true, ship: { select: { name: true } } },
     });
     if (!op) throw new NotFoundException('Operación no encontrada');
 
@@ -316,30 +314,59 @@ export class VehiclesService {
         containerNumber: true,
         currentReportId: true,
         billOfLading: { select: { blNumber: true } },
+        currentReport: {
+          select: {
+            tarjadorId: true,
+            finishedAt: true,
+            status: true,
+            editRequests: {
+              where: { status: { in: ['PENDIENTE', 'APROBADA', 'RECHAZADA'] } },
+              orderBy: { id: 'desc' },
+              take: 1,
+              select: { status: true, resolveComment: true },
+            },
+          },
+        },
       },
     });
+
+    const isTarjador = user?.role === 'TARJADOR';
+
+    const mapped = vehicles.map((v) => {
+      const block = getVehicleBlock(v.status);
+      const done = v.status === 'TARJADO' || v.status === 'OBSERVADO';
+      const rep = v.currentReport;
+      const secondsLeft = rep ? reopenSecondsLeft({ status: rep.status, finishedAt: rep.finishedAt }) : 0;
+      return {
+        vehicleId: v.id,
+        vin: v.vin,
+        status: v.status,
+        brand: v.brand,
+        model: v.model,
+        containerNumber: v.containerNumber,
+        blNumber: v.billOfLading?.blNumber ?? null,
+        currentReportId: v.currentReportId,
+        done,
+        blocked: block !== null,
+        blockedReason: block?.label ?? null,
+        tarjadorId: rep?.tarjadorId ?? null,
+        reopenSecondsLeft: secondsLeft,
+        editRequestStatus: rep?.editRequests[0]?.status ?? null,
+        editRejectComment: rep?.editRequests[0]?.status === 'RECHAZADA' ? rep?.editRequests[0]?.resolveComment ?? null : null,
+      };
+    });
+
+    // El tarjador solo ve como "realizados" los suyos; los demás realizados se ocultan de esa pestaña.
+    const vehiclesOut = isTarjador
+      ? mapped.filter((v) => !v.done || v.tarjadorId === user!.userId)
+      : mapped;
 
     return {
       operationId: op.id,
       operationCode: op.code,
       operationStatus: op.status,
       shipName: op.ship.name,
-      vehicles: vehicles.map((v) => {
-        const block = getVehicleBlock(v.status);
-        return {
-          vehicleId: v.id,
-          vin: v.vin,
-          status: v.status,
-          brand: v.brand,
-          model: v.model,
-          containerNumber: v.containerNumber,
-          blNumber: v.billOfLading?.blNumber ?? null,
-          currentReportId: v.currentReportId,
-          done: v.status === 'TARJADO' || v.status === 'OBSERVADO',
-          blocked: block !== null,
-          blockedReason: block?.label ?? null,
-        };
-      }),
+      vehicles: vehiclesOut,
     };
   }
 
