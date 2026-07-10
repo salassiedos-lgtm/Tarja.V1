@@ -425,7 +425,12 @@ export class TarjaService {
 
     const reopenThreshold = new Date(Date.now() - REOPEN_WINDOW_MIN * 60_000);
     const abandoned = await this.prisma.tarjaReport.findMany({
-      where: { status: 'BORRADOR', finishedAt: { lt: reopenThreshold } },
+      // Las ediciones AUTORIZADAS no tienen cronómetro: se eximen del auto-revert.
+      where: {
+        status: 'BORRADOR',
+        finishedAt: { lt: reopenThreshold },
+        NOT: { editRequests: { some: { status: 'APROBADA' } } },
+      },
       select: { id: true, vehicleId: true, operationId: true, hasDamage: true },
     });
     for (const r of abandoned) {
