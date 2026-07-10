@@ -416,10 +416,25 @@ body {
   .stat svg { color: var(--color-muted); }
   .stat.ok svg { color: var(--color-green); }
   .stat.warn svg { color: var(--color-amber); }
-  .bl-pct { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
-  .bl-pct.lo { background: var(--color-blue-100); color: var(--color-blue-dark); }
-  .bl-pct.mid { background: var(--color-amber-50); color: var(--color-amber); }
-  .bl-pct.hi { background: var(--color-green-50); color: var(--color-green); }
+
+  .bl-progress { display: flex; align-items: center; gap: 10px; margin: 12px 0 10px; }
+  .bl-progress .bar { flex: 1; height: 10px; margin: 0; }
+  .bl-pct { font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .bl-pct.lo { color: var(--color-muted); }
+  .bl-pct.mid { color: var(--color-amber); }
+  .bl-pct.hi { color: var(--color-green); }
+
+  .bl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+    border-radius: 20px; background: var(--color-track); color: var(--color-text);
+    font-weight: 700; font-size: 13px;
+  }
+  .chip svg { color: var(--color-muted); }
+  .chip.ok { background: var(--color-green-50); color: var(--color-green); }
+  .chip.ok svg { color: var(--color-green); }
+  .chip.warn { background: var(--color-amber-50); color: var(--color-amber); }
+  .chip.warn svg { color: var(--color-amber); }
 
   .modgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .mod {
