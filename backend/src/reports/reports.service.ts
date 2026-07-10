@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { WorkShift } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
@@ -34,6 +35,60 @@ export class ReportsService {
         supervisor: { select: { username: true } },
       },
     });
+  }
+
+  /** Avance por turno: tarjas completadas en una fecha + turno dados. */
+  async shiftReport(dateStr: string, shift: string) {
+    if (!dateStr) throw new BadRequestException('Falta la fecha (date=YYYY-MM-DD)');
+    const workShift: WorkShift = shift === 'NOCHE' ? WorkShift.NOCHE : WorkShift.DIA;
+    const reportDate = new Date(`${dateStr}T00:00:00.000Z`);
+    if (Number.isNaN(reportDate.getTime())) throw new BadRequestException('Fecha inválida');
+
+    const rows = await this.prisma.tarjaReport.findMany({
+      where: {
+        reportDate,
+        workShift,
+        status: { in: ['FINALIZADO', 'CON_DANO'] },
+      },
+      orderBy: { finishedAt: 'asc' },
+      include: {
+        vehicle: { select: { vin: true, containerNumber: true, brand: true, model: true } },
+        tarjador: { select: { name: true, lastname: true, initials: true } },
+        billOfLading: { select: { blNumber: true } },
+        operation: { select: { ship: { select: { name: true } } } },
+      },
+    });
+
+    const total = rows.length;
+    const damaged = rows.filter((r) => r.hasDamage).length;
+    const durations = rows
+      .map((r) => r.durationSeconds)
+      .filter((n): n is number => typeof n === 'number');
+    const avgSeconds = durations.length
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : null;
+
+    return {
+      date: dateStr,
+      shift: workShift,
+      total,
+      damaged,
+      undamaged: total - damaged,
+      avgSeconds,
+      rows: rows.map((r) => ({
+        reportCode: r.reportCode,
+        vin: r.vehicle?.vin ?? null,
+        container: r.vehicle?.containerNumber ?? null,
+        brand: r.vehicle?.brand ?? null,
+        model: r.vehicle?.model ?? null,
+        vessel: r.operation?.ship?.name ?? null,
+        bl: r.billOfLading?.blNumber ?? null,
+        tarjador: r.tarjador ? `${r.tarjador.name} ${r.tarjador.lastname}`.trim() : null,
+        initials: r.tarjador?.initials ?? null,
+        hasDamage: r.hasDamage,
+        durationSeconds: r.durationSeconds,
+      })),
+    };
   }
 
   async annul(reportId: number, dto: AnnulDto, supervisorId: number) {
@@ -106,18 +161,119 @@ export class ReportsService {
     const operations = await this.prisma.operation.findMany({
       where: { status: { in: ['ACTIVA', 'PAUSADA'] } },
       orderBy: { id: 'desc' },
-      include: { _count: { select: { vehicles: true } } },
+      include: { ship: { select: { name: true } }, _count: { select: { vehicles: true } } },
     });
+
+    const doneGrouped = operations.length
+      ? await this.prisma.vehicle.groupBy({
+          by: ['operationId'],
+          where: {
+            operationId: { in: operations.map((o) => o.id) },
+            status: { in: ['TARJADO', 'OBSERVADO'] },
+          },
+          _count: { status: true },
+        })
+      : [];
+    const doneByOperation: Record<number, number> = {};
+    for (const g of doneGrouped) doneByOperation[g.operationId] = g._count.status;
+
     const recent = await this.prisma.tarjaReport.findMany({
       where: { status: { in: ['FINALIZADO', 'CON_DANO', 'ANULADO'] } },
-      orderBy: { id: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       take: 20,
       include: {
         vehicle: { select: { vin: true } },
         tarjador: { select: { initials: true } },
-        operation: { select: { code: true } },
+        operation: { select: { code: true, ship: { select: { name: true } } } },
       },
     });
-    return { operations, recent };
+
+    const [tarjadas, enProceso, conDano, durAgg, activeShips] = await Promise.all([
+      this.prisma.tarjaReport.count({ where: { status: { in: ['FINALIZADO', 'CON_DANO'] } } }),
+      this.prisma.tarjaReport.count({ where: { status: 'BORRADOR' } }),
+      this.prisma.tarjaReport.count({ where: { status: 'CON_DANO' } }),
+      this.prisma.tarjaReport.aggregate({
+        where: { status: { in: ['FINALIZADO', 'CON_DANO'] }, durationSeconds: { not: null } },
+        _avg: { durationSeconds: true },
+      }),
+      this.prisma.operation.count({ where: { status: 'ACTIVA' } }),
+    ]);
+
+    const trend = await this.dailyTrend(14);
+
+    return {
+      operations: operations.map(({ ship, ...o }) => ({
+        ...o,
+        shipName: ship.name,
+        doneVehicles: doneByOperation[o.id] ?? 0,
+      })),
+      recent: recent.map(({ operation, ...r }) => ({
+        ...r,
+        operation: { code: operation.code, shipName: operation.ship.name },
+      })),
+      stats: {
+        tarjadas,
+        enProceso,
+        conDano,
+        avgDurationSeconds: Math.round(durAgg._avg.durationSeconds ?? 0),
+        activeShips,
+        trend,
+      },
+    };
+  }
+
+  /** Serie diaria (real, no simulada) para los sparklines del panel: tarjas
+   * iniciadas/finalizadas/con-daño y duracion media, agrupadas por dia local. */
+  private async dailyTrend(numDays: number) {
+    const since = new Date();
+    since.setDate(since.getDate() - (numDays - 1));
+    since.setHours(0, 0, 0, 0);
+
+    const reports = await this.prisma.tarjaReport.findMany({
+      where: { OR: [{ finishedAt: { gte: since } }, { startedAt: { gte: since } }] },
+      select: { startedAt: true, finishedAt: true, status: true, durationSeconds: true },
+    });
+
+    const days: string[] = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    const byDay = new Map<
+      string,
+      { iniciadas: number; tarjadas: number; conDano: number; durSum: number; durCount: number }
+    >();
+    for (const day of days) byDay.set(day, { iniciadas: 0, tarjadas: 0, conDano: 0, durSum: 0, durCount: 0 });
+
+    for (const r of reports) {
+      if (r.startedAt) {
+        const bucket = byDay.get(r.startedAt.toISOString().slice(0, 10));
+        if (bucket) bucket.iniciadas++;
+      }
+      if (r.finishedAt && (r.status === 'FINALIZADO' || r.status === 'CON_DANO')) {
+        const bucket = byDay.get(r.finishedAt.toISOString().slice(0, 10));
+        if (bucket) {
+          bucket.tarjadas++;
+          if (r.status === 'CON_DANO') bucket.conDano++;
+          if (r.durationSeconds) {
+            bucket.durSum += r.durationSeconds;
+            bucket.durCount++;
+          }
+        }
+      }
+    }
+
+    return days.map((day) => {
+      const b = byDay.get(day)!;
+      return {
+        day,
+        tarjadas: b.tarjadas,
+        enProceso: b.iniciadas,
+        conDano: b.conDano,
+        avgDurationSeconds: b.durCount ? Math.round(b.durSum / b.durCount) : 0,
+      };
+    });
   }
 }

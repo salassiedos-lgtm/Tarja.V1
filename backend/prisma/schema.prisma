@@ -68,6 +68,11 @@ enum DamageMoment {
   OTROS
 }
 
+enum WorkShift {
+  DIA
+  NOCHE
+}
+
 model Role {
   id          Int      @id @default(autoincrement())
   name        RoleName @unique
@@ -235,6 +240,8 @@ model TarjaReport {
   damageMomentOther String?          @map("damage_moment_other")
   details           String?
   tarjadorInitials  String?          @map("tarjador_initials")
+  workShift         WorkShift?       @map("work_shift")
+  reportDate        DateTime?        @map("report_date") @db.Date
   status            ReportStatus     @default(BORRADOR)
   replacedById      Int?             @map("replaced_by_report_id")
   replacedBy        TarjaReport?     @relation("ReplacementChain", fields: [replacedById], references: [id])

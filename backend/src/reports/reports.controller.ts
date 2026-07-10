@@ -31,6 +31,12 @@ export class ReportsController {
   }
 
   @Roles('SUPERVISOR', 'ADMIN')
+  @Get('reports/shift')
+  shiftReport(@Query('date') date: string, @Query('shift') shift: string) {
+    return this.service.shiftReport(date, shift);
+  }
+
+  @Roles('SUPERVISOR', 'ADMIN')
   @Post('reports/:id/annul')
   annul(
     @Param('id', ParseIntPipe) id: number,

@@ -5,13 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Prisma, ReportStatus, VehicleStatus } from '@prisma/client';
+import { Prisma, ReportStatus, VehicleStatus, WorkShift } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AuditService } from '../audit/audit.service';
 import { ReportCodeService } from './report-code.service';
 import { validateVin } from '../common/vin.util';
 import { getVehicleBlock } from '../common/vehicle-block';
+import { limaShift } from '../common/shift.util';
 import {
   FinishTarjaDto,
   SetAccessoriesDto,
@@ -177,6 +178,7 @@ export class TarjaService {
       : null;
     const status: ReportStatus = report.hasDamage ? 'CON_DANO' : 'FINALIZADO';
     const vehicleStatus: VehicleStatus = report.hasDamage ? 'OBSERVADO' : 'TARJADO';
+    const { reportDate, workShift } = limaShift(now);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const r = await tx.tarjaReport.update({
@@ -185,6 +187,8 @@ export class TarjaService {
           finishedAt: now,
           durationSeconds,
           status,
+          reportDate,
+          workShift,
           details: dto.details ?? null,
           tarjadorInitials: dto.initials ?? null,
         },
