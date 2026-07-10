@@ -6,7 +6,17 @@ import { Barcode, Camera } from 'lucide-react';
 import Shell from '@/components/shell';
 import BarcodeScanner from '@/components/barcode-scanner';
 import OcrScanner from '@/components/ocr-scanner';
-import { getNaveVehicles, startTarja, type NaveVehicle, type NaveVehicles } from '@/lib/api';
+import {
+  getNaveVehicles,
+  startTarja,
+  reopenTarja,
+  reopenReport,
+  requestTarjaEdit,
+  getUser,
+  type AuthUser,
+  type NaveVehicle,
+  type NaveVehicles,
+} from '@/lib/api';
 import { extractVinFromScan } from '@/lib/vin-scan';
 
 /** Tope de filas dibujadas: una nave RO-RO puede traer miles de chasis; el
@@ -34,6 +44,11 @@ export default function NaveTasksPage() {
   const [q, setQ] = useState('');
   const [scan, setScan] = useState<'' | 'barcode' | 'ocr'>('');
   const [startingVin, setStartingVin] = useState('');
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    setUser(getUser());
+  }, []);
 
   const load = useCallback(async () => {
     setError('');
@@ -89,6 +104,44 @@ export default function NaveTasksPage() {
     setScan('');
     const vin = mode === 'barcode' ? extractVinFromScan(raw) || cleanCode(raw) : cleanCode(raw);
     if (vin) setQ(vin);
+  }
+
+  /** Dueño: entra a editar (dentro de la ventana de 10 min o con solicitud aprobada). */
+  async function enterEdit(v: NaveVehicle) {
+    if (!v.currentReportId) return;
+    try {
+      await reopenTarja(v.currentReportId);
+      router.push(`/tarja/${v.currentReportId}`);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo abrir para editar');
+      load();
+    }
+  }
+
+  /** Dueño: pide autorización al supervisor cuando la ventana de 10 min venció. */
+  async function askEdit(v: NaveVehicle) {
+    if (!v.currentReportId) return;
+    const reason = window.prompt('Motivo de la edición (lo revisará el supervisor):')?.trim();
+    if (!reason) return;
+    try {
+      await requestTarjaEdit(v.currentReportId, reason);
+      alert('Solicitud enviada. Espera la autorización del supervisor.');
+      load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo enviar la solicitud');
+    }
+  }
+
+  /** Supervisor/admin: reabre la tarja para rehacerla desde cero. */
+  async function reabrir(v: NaveVehicle) {
+    if (!v.currentReportId) return;
+    if (!window.confirm('¿Reabrir esta tarja para rehacerla desde cero?')) return;
+    try {
+      await reopenReport(v.currentReportId);
+      load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo reabrir');
+    }
   }
 
   return (
@@ -159,13 +212,7 @@ export default function NaveTasksPage() {
         <>
           {shown.map((v) =>
             tab === 'done' ? (
-              <button
-                key={v.vehicleId}
-                type="button"
-                className="task tap"
-                style={{ width: '100%', textAlign: 'left' }}
-                onClick={() => v.currentReportId && router.push(`/tarja/${v.currentReportId}`)}
-              >
+              <div key={v.vehicleId} className="task">
                 <div className="grow">
                   <div className="vin">{v.vin}</div>
                   <div className="meta">{vehicleMeta(v)}</div>
@@ -173,7 +220,40 @@ export default function NaveTasksPage() {
                 <span className={`badge ${v.status === 'OBSERVADO' ? 'in_progress' : 'completed'}`}>
                   {v.status === 'OBSERVADO' ? 'Con daño' : 'Tarjado'}
                 </span>
-              </button>
+                {user?.role === 'TARJADOR' ? (
+                  v.editRequestStatus === 'PENDIENTE' ? (
+                    <span className="badge pending">Solicitud pendiente</span>
+                  ) : v.editRequestStatus === 'APROBADA' ? (
+                    <button type="button" className="btn small" onClick={() => enterEdit(v)}>
+                      Editar
+                    </button>
+                  ) : v.reopenSecondsLeft > 0 ? (
+                    <button type="button" className="btn small" onClick={() => enterEdit(v)}>
+                      Editar ({Math.floor(v.reopenSecondsLeft / 60)}:
+                      {String(v.reopenSecondsLeft % 60).padStart(2, '0')})
+                    </button>
+                  ) : (
+                    <>
+                      {v.editRequestStatus === 'RECHAZADA' && (
+                        <span
+                          className="badge"
+                          style={{ background: 'var(--color-red-50)', color: 'var(--color-red)' }}
+                          title={v.editRejectComment ?? undefined}
+                        >
+                          Rechazada
+                        </span>
+                      )}
+                      <button type="button" className="btn small ghost" onClick={() => askEdit(v)}>
+                        Solicitar edición
+                      </button>
+                    </>
+                  )
+                ) : (
+                  <button type="button" className="btn small ghost" onClick={() => reabrir(v)}>
+                    Reabrir
+                  </button>
+                )}
+              </div>
             ) : v.blocked ? (
               <div key={v.vehicleId} className="task" style={{ opacity: 0.55 }}>
                 <div className="grow">
