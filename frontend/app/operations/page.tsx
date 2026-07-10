@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import {
   listOperations,
@@ -290,11 +291,11 @@ function OperationRow({
 
   return (
     <div
-      className="rise group relative flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-navy-50/50 sm:flex-row sm:items-center sm:gap-4"
+      className="rise group relative flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-navy-50/50"
       style={{ animationDelay: `${120 + i * 45}ms` }}
     >
       {/* icono + identidad */}
-      <div className="flex min-w-0 flex-1 items-center gap-3.5">
+      <div className="flex min-w-0 items-center gap-3.5">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-50 text-navy-800 ring-1 ring-navy-100">
           {op.operationType === 'DESCONSOLIDADO' ? (
             <IconLayers className="h-5 w-5" />
@@ -323,24 +324,24 @@ function OperationRow({
         </div>
       </div>
 
-      {/* vehículos */}
-      <div className="flex shrink-0 items-center gap-1.5 sm:w-28">
-        <span className="tnum font-display text-[17px] font-bold text-navy-900">{vehicles}</span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          {vehicles === 1 ? 'unidad' : 'unidades'}
+      {/* vehículos + estado */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="tnum font-display text-[17px] font-bold text-navy-900">{vehicles}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+            {vehicles === 1 ? 'unidad' : 'unidades'}
+          </span>
+        </div>
+        <span
+          className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${meta.pill}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+          {meta.label}
         </span>
       </div>
 
-      {/* estado */}
-      <span
-        className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${meta.pill} sm:w-24`}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-        {meta.label}
-      </span>
-
       {/* acciones */}
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {isAdmin && op.status !== 'ACTIVA' && (
           <button
             onClick={() => onStatus(op.id, 'activate')}
@@ -482,6 +483,7 @@ function DeleteOperationModal({
 /* ------------------------------- página ------------------------------- */
 
 export default function OperationsPage() {
+  const router = useRouter();
   const [ops, setOps] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -538,7 +540,7 @@ export default function OperationsPage() {
   }, [ops, query, statusFilter]);
 
   return (
-    <Shell>
+    <Shell onBack={() => router.push('/inicio')}>
       {/* ---------- encabezado ---------- */}
       <section className="rise mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
