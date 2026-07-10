@@ -20,21 +20,15 @@ import {
   SetDamagesDto,
   StartTarjaDto,
 } from './dto/tarja.dto';
+import {
+  REOPEN_WINDOW_MIN,
+  reopenSecondsLeft,
+  canEnterEdit,
+  snapshotOf,
+  computeEditDiff,
+} from './edit.util';
 
 const AUTO_RELEASE_MIN = 15;
-/** Ventana de edición post-finalización: el tarjador dueño puede reabrir su tarja. */
-const REOPEN_WINDOW_MIN = 10;
-
-/** Segundos que restan de la ventana de 10 min, medidos desde finishedAt. 0 si venció o no aplica. */
-function reopenSecondsLeft(report: {
-  status: ReportStatus;
-  finishedAt: Date | null;
-}): number {
-  if (report.status !== 'FINALIZADO' && report.status !== 'CON_DANO') return 0;
-  if (!report.finishedAt) return 0;
-  const elapsed = (Date.now() - report.finishedAt.getTime()) / 1000;
-  return Math.max(0, Math.round(REOPEN_WINDOW_MIN * 60 - elapsed));
-}
 
 @Injectable()
 export class TarjaService {
@@ -260,32 +254,50 @@ export class TarjaService {
   }
 
   /**
-   * Reapertura del dueño dentro de la ventana de 10 min: devuelve la tarja a
-   * BORRADOR para corregirla. Conserva finishedAt/duración como marca del último
-   * cierre — así el auto-release la distingue de un borrador nuevo y, si se
-   * abandona, la revierte (no la borra). Vencida la ventana: solo anulación (supervisor).
+   * Entra a editar una tarja finalizada. Dos caminos:
+   *  - Dueño dentro de la ventana de 10 min (edición libre).
+   *  - Dueño con una solicitud de edición APROBADA (post-10min, sin cronómetro).
+   * Captura un snapshot del estado actual para el diff posterior, pasa el reporte
+   * a BORRADOR y bloquea el vehículo. Conserva finishedAt/duración.
    */
   async reopen(reportId: number, userId: number) {
-    const report = await this.prisma.tarjaReport.findUnique({ where: { id: reportId } });
+    const report = await this.prisma.tarjaReport.findUnique({
+      where: { id: reportId },
+      include: {
+        accessories: { include: { accessory: { select: { name: true } } } },
+        damages: { select: { description: true } },
+        operation: { select: { status: true, code: true } },
+      },
+    });
     if (!report) throw new NotFoundException('Reporte no encontrado');
-    if (report.tarjadorId !== userId) {
-      throw new ForbiddenException('Solo el tarjador que la realizó puede reabrir esta tarja');
-    }
-    if (report.status !== 'FINALIZADO' && report.status !== 'CON_DANO') {
-      throw new BadRequestException('La tarja no está finalizada');
-    }
-    if (reopenSecondsLeft(report) <= 0) {
+
+    const approved = await this.prisma.tarjaEditRequest.count({
+      where: { reportId, status: 'APROBADA' },
+    });
+    const gate = canEnterEdit(report, userId, approved > 0, new Date());
+    if (!gate.allowed) {
+      if (gate.code === 'NOT_OWNER') {
+        throw new ForbiddenException('Solo el tarjador que la realizó puede editar esta tarja');
+      }
+      if (gate.code === 'NOT_FINALIZED') {
+        throw new BadRequestException('La tarja no está finalizada');
+      }
       throw new BadRequestException(
-        'La ventana de edición de 10 minutos expiró. Solicita una anulación al supervisor.',
+        'REQUIERE_AUTORIZACION: la ventana de edición de 10 minutos expiró. Solicita autorización al supervisor.',
+      );
+    }
+    if (report.operation.status !== 'ACTIVA') {
+      throw new ConflictException(
+        `El lote ${report.operation.code} está cerrado. Pídele al administrador que lo abra para editar.`,
       );
     }
 
+    const snapshot = snapshotOf(report);
+
     const updated = await this.prisma.$transaction(async (tx) => {
-      // Conserva finishedAt/durationSeconds/reportDate/workShift: son la marca del
-      // último cierre y permiten al auto-release revertir en vez de borrar.
       const r = await tx.tarjaReport.update({
         where: { id: reportId },
-        data: { status: 'BORRADOR' },
+        data: { status: 'BORRADOR', editSnapshot: snapshot as unknown as Prisma.InputJsonValue },
       });
       await tx.vehicle.update({
         where: { id: report.vehicleId },
@@ -307,8 +319,8 @@ export class TarjaService {
     this.audit.record({
       userId,
       module: 'tarja',
-      action: 'REOPEN',
-      description: `Reporte ${reportId} reabierto (ventana ${REOPEN_WINDOW_MIN} min)`,
+      action: 'EDIT_START',
+      description: `Tarja ${report.reportCode} abierta para edición (ventana ${REOPEN_WINDOW_MIN} min o autorizada)`,
     });
     return updated;
   }
