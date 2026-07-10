@@ -299,6 +299,10 @@ export interface NaveVehicle {
   done: boolean;
   blocked: boolean;
   blockedReason: string | null;
+  tarjadorId: number | null;
+  reopenSecondsLeft: number;
+  editRequestStatus: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | null;
+  editRejectComment: string | null;
 }
 export interface NaveVehicles {
   operationId: number;
@@ -380,6 +384,32 @@ export const finishTarja = (id: number | string, d: { details?: string; initials
 /** Reabre la tarja recién finalizada (solo el dueño, dentro de la ventana de 10 min). */
 export const reopenTarja = (id: number | string) =>
   apiJson<TarjaReport>(`/tarja/${id}/reopen`, 'POST');
+
+/** El dueño solicita autorización para editar (ventana de 10 min vencida). */
+export const requestTarjaEdit = (id: number | string, reason: string) =>
+  apiJson<{ id: number }>(`/tarja/${id}/edit-request`, 'POST', { reason });
+
+export interface EditRequestRow {
+  id: number;
+  reason: string;
+  status: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'COMPLETADA';
+  createdAt: string;
+  requestedBy: { name: string; lastname: string; initials: string | null; username: string };
+  report: {
+    reportCode: string;
+    vehicle: { vin: string } | null;
+    operation: { code: string; ship: { name: string } } | null;
+  };
+}
+
+export const listEditRequests = (status = 'PENDIENTE') =>
+  apiGet<EditRequestRow[]>(`/tarja/edit-requests?status=${status}`);
+
+export const resolveEditRequest = (id: number, approve: boolean, comment?: string) =>
+  apiJson<{ id: number }>(`/tarja/edit-requests/${id}/resolve`, 'POST', { approve, comment });
+
+export const cancelEditRequest = (id: number) =>
+  apiJson<{ canceled: boolean }>(`/tarja/edit-requests/${id}/cancel`, 'POST');
 
 // ---------------- supervisión / reportes ----------------
 export interface ProgressData {
