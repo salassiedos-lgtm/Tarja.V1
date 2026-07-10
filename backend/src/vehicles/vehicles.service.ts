@@ -162,6 +162,124 @@ export class VehiclesService {
     return { deleted: true, vin: vehicle.vin };
   }
 
+  /**
+   * Tablero por B/L (Cuadro de Tareas): un card por cada BillOfLading de las
+   * operaciones ABIERTAS (ACTIVA), con su avance de tarja. El tarjador entra
+   * aquí a ver qué le falta por chasis.
+   */
+  async blBoard() {
+    const DONE = ['TARJADO', 'OBSERVADO'];
+
+    const statusRows = await this.prisma.vehicle.groupBy({
+      by: ['billOfLadingId', 'status'],
+      where: { operation: { status: 'ACTIVA' }, billOfLadingId: { not: null } },
+      _count: { _all: true },
+    });
+    if (statusRows.length === 0) return [];
+
+    const blIds = [...new Set(statusRows.map((r) => r.billOfLadingId!))];
+    const [bls, containerRows] = await Promise.all([
+      this.prisma.billOfLading.findMany({
+        where: { id: { in: blIds } },
+        select: {
+          id: true,
+          blNumber: true,
+          operationId: true,
+          operation: { select: { code: true, ship: { select: { name: true } } } },
+        },
+      }),
+      this.prisma.vehicle.groupBy({
+        by: ['billOfLadingId', 'containerNumber'],
+        where: {
+          billOfLadingId: { in: blIds },
+          containerNumber: { not: null },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byBl = new Map<number, { byStatus: Record<string, number>; containers: Set<string> }>();
+    for (const id of blIds) byBl.set(id, { byStatus: {}, containers: new Set() });
+    for (const r of statusRows) byBl.get(r.billOfLadingId!)!.byStatus[r.status] = r._count._all;
+    for (const c of containerRows) {
+      if (c.containerNumber) byBl.get(c.billOfLadingId!)?.containers.add(c.containerNumber);
+    }
+
+    return bls
+      .map((bl) => {
+        const e = byBl.get(bl.id)!;
+        const total = Object.values(e.byStatus).reduce((a, b) => a + b, 0);
+        const done = DONE.reduce((a, s) => a + (e.byStatus[s] ?? 0), 0);
+        const inProcess = e.byStatus['EN_PROCESO'] ?? 0;
+        return {
+          billOfLadingId: bl.id,
+          blNumber: bl.blNumber,
+          operationId: bl.operationId,
+          operationCode: bl.operation.code,
+          shipName: bl.operation.ship.name,
+          total,
+          done,
+          inProcess,
+          pending: total - done,
+          containers: e.containers.size,
+          percent: total ? Math.round((done / total) * 100) : 0,
+        };
+      })
+      .sort((a, b) => a.percent - b.percent || a.blNumber.localeCompare(b.blNumber));
+  }
+
+  /** Chasis de un B/L para la lista de tareas (tabs Por tarjar / Realizados). */
+  async blVehicles(blId: number) {
+    const bl = await this.prisma.billOfLading.findUnique({
+      where: { id: blId },
+      select: {
+        id: true,
+        blNumber: true,
+        operationId: true,
+        operation: { select: { code: true, status: true, ship: { select: { name: true } } } },
+      },
+    });
+    if (!bl) throw new NotFoundException('B/L no encontrado');
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { billOfLadingId: blId },
+      orderBy: [{ containerNumber: 'asc' }, { vin: 'asc' }],
+      select: {
+        id: true,
+        vin: true,
+        status: true,
+        brand: true,
+        model: true,
+        containerNumber: true,
+        currentReportId: true,
+      },
+    });
+
+    return {
+      billOfLadingId: bl.id,
+      blNumber: bl.blNumber,
+      operationId: bl.operationId,
+      operationCode: bl.operation.code,
+      operationStatus: bl.operation.status,
+      shipName: bl.operation.ship.name,
+      vehicles: vehicles.map((v) => {
+        const block = getVehicleBlock(v.status);
+        return {
+          vehicleId: v.id,
+          vin: v.vin,
+          status: v.status,
+          brand: v.brand,
+          model: v.model,
+          containerNumber: v.containerNumber,
+          currentReportId: v.currentReportId,
+          done: v.status === 'TARJADO' || v.status === 'OBSERVADO',
+          blocked: block !== null,
+          blockedReason: block?.label ?? null,
+        };
+      }),
+    };
+  }
+
   /** Avance por contenedor. Solo para el panel del supervisor. */
   async containerProgress(operationId: number) {
     const rows = await this.prisma.vehicle.groupBy({

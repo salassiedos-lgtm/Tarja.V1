@@ -41,6 +41,17 @@ export class VehiclesController {
     return this.service.search(q ?? '');
   }
 
+  // Tablero por B/L (Cuadro de Tareas). Declarado antes de 'vehicles/:id' por higiene de rutas.
+  @Get('bls/board')
+  blBoard() {
+    return this.service.blBoard();
+  }
+
+  @Get('bls/:id/vehicles')
+  blVehicles(@Param('id', ParseIntPipe) id: number) {
+    return this.service.blVehicles(id);
+  }
+
   @Get('vehicles/:id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);

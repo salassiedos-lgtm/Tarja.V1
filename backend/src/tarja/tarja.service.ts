@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +22,19 @@ import {
 } from './dto/tarja.dto';
 
 const AUTO_RELEASE_MIN = 15;
+/** Ventana de edición post-finalización: el tarjador dueño puede reabrir su tarja. */
+const REOPEN_WINDOW_MIN = 10;
+
+/** Segundos que restan de la ventana de 10 min, medidos desde finishedAt. 0 si venció o no aplica. */
+function reopenSecondsLeft(report: {
+  status: ReportStatus;
+  finishedAt: Date | null;
+}): number {
+  if (report.status !== 'FINALIZADO' && report.status !== 'CON_DANO') return 0;
+  if (!report.finishedAt) return 0;
+  const elapsed = (Date.now() - report.finishedAt.getTime()) / 1000;
+  return Math.max(0, Math.round(REOPEN_WINDOW_MIN * 60 - elapsed));
+}
 
 @Injectable()
 export class TarjaService {
@@ -34,7 +48,10 @@ export class TarjaService {
   async start(dto: StartTarjaDto, tarjadorId: number) {
     const { vin } = validateVin(dto.vin);
 
-    const vehicle = await this.prisma.vehicle.findUnique({ where: { vin } });
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { vin },
+      include: { operation: { select: { status: true, code: true } } },
+    });
 
     // VIN desconocido: el tarjador no puede continuar. Queda en bitacora
     // para que el supervisor lo regularice dando de alta el vehiculo.
@@ -49,6 +66,14 @@ export class TarjaService {
       this.realtime.emit('vin.unknown', { vin, tarjadorId });
       throw new NotFoundException(
         `VIN ${vin} no encontrado. Se notifico al supervisor para su regularizacion.`,
+      );
+    }
+
+    // Gate de lote: el tarjador solo trabaja tareas de un lote (operación) ABIERTO.
+    // GET /vehicles/search ya oculta los cerrados; esto lo refuerza para VIN directo/escáner.
+    if (vehicle.operation.status !== 'ACTIVA') {
+      throw new ConflictException(
+        `El lote ${vehicle.operation.code} está cerrado. Pídele al administrador que lo abra para poder tarjar.`,
       );
     }
 
@@ -173,9 +198,14 @@ export class TarjaService {
   async finish(reportId: number, dto: FinishTarjaDto) {
     const report = await this.getDraft(reportId);
     const now = new Date();
-    const durationSeconds = report.startedAt
-      ? Math.max(0, Math.round((now.getTime() - report.startedAt.getTime()) / 1000))
-      : null;
+    // Si es un re-finish de una reapertura (ya tenía finishedAt), conserva la
+    // duración original: el tiempo de edición dentro de la ventana no cuenta.
+    const durationSeconds =
+      report.finishedAt != null
+        ? report.durationSeconds
+        : report.startedAt
+          ? Math.max(0, Math.round((now.getTime() - report.startedAt.getTime()) / 1000))
+          : null;
     const status: ReportStatus = report.hasDamage ? 'CON_DANO' : 'FINALIZADO';
     const vehicleStatus: VehicleStatus = report.hasDamage ? 'OBSERVADO' : 'TARJADO';
     const { reportDate, workShift } = limaShift(now);
@@ -215,8 +245,8 @@ export class TarjaService {
     return updated;
   }
 
-  findOne(reportId: number) {
-    return this.prisma.tarjaReport.findUnique({
+  async findOne(reportId: number) {
+    const report = await this.prisma.tarjaReport.findUnique({
       where: { id: reportId },
       include: {
         accessories: { include: { accessory: true } },
@@ -225,6 +255,62 @@ export class TarjaService {
         operation: true,
       },
     });
+    if (!report) return null;
+    return { ...report, reopenSecondsLeft: reopenSecondsLeft(report) };
+  }
+
+  /**
+   * Reapertura del dueño dentro de la ventana de 10 min: devuelve la tarja a
+   * BORRADOR para corregirla. Conserva finishedAt/duración como marca del último
+   * cierre — así el auto-release la distingue de un borrador nuevo y, si se
+   * abandona, la revierte (no la borra). Vencida la ventana: solo anulación (supervisor).
+   */
+  async reopen(reportId: number, userId: number) {
+    const report = await this.prisma.tarjaReport.findUnique({ where: { id: reportId } });
+    if (!report) throw new NotFoundException('Reporte no encontrado');
+    if (report.tarjadorId !== userId) {
+      throw new ForbiddenException('Solo el tarjador que la realizó puede reabrir esta tarja');
+    }
+    if (report.status !== 'FINALIZADO' && report.status !== 'CON_DANO') {
+      throw new BadRequestException('La tarja no está finalizada');
+    }
+    if (reopenSecondsLeft(report) <= 0) {
+      throw new BadRequestException(
+        'La ventana de edición de 10 minutos expiró. Solicita una anulación al supervisor.',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Conserva finishedAt/durationSeconds/reportDate/workShift: son la marca del
+      // último cierre y permiten al auto-release revertir en vez de borrar.
+      const r = await tx.tarjaReport.update({
+        where: { id: reportId },
+        data: { status: 'BORRADOR' },
+      });
+      await tx.vehicle.update({
+        where: { id: report.vehicleId },
+        data: {
+          status: 'EN_PROCESO',
+          lockedById: userId,
+          lockedAt: new Date(),
+          currentReportId: reportId,
+        },
+      });
+      return r;
+    });
+
+    this.realtime.emit('report.reopened', {
+      reportId,
+      operationId: report.operationId,
+      vehicleId: report.vehicleId,
+    });
+    this.audit.record({
+      userId,
+      module: 'tarja',
+      action: 'REOPEN',
+      description: `Reporte ${reportId} reabierto (ventana ${REOPEN_WINDOW_MIN} min)`,
+    });
+    return updated;
   }
 
   async release(vehicleId: number) {
@@ -250,12 +336,33 @@ export class TarjaService {
     });
   }
 
-  // Auto-liberacion: descarta borradores de mas de 15 min y libera el vehiculo.
+  /** Revierte una reapertura al estado finalizado que tenía antes (no destruye la tarja). */
+  private async revertReopen(reportId: number, vehicleId: number, hasDamage: boolean) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tarjaReport.update({
+        where: { id: reportId },
+        data: { status: hasDamage ? 'CON_DANO' : 'FINALIZADO' },
+      });
+      await tx.vehicle.update({
+        where: { id: vehicleId },
+        data: {
+          status: hasDamage ? 'OBSERVADO' : 'TARJADO',
+          lockedById: null,
+          lockedAt: null,
+          currentReportId: reportId,
+        },
+      });
+    });
+  }
+
+  // Auto-liberacion cada minuto. Dos casos distintos, por el marcador finishedAt:
+  //  1) Borrador nuevo (finishedAt = null) abandonado > 15 min  -> se descarta (borra).
+  //  2) Reapertura (finishedAt puesto) abandonada > 10 min       -> se revierte al finalizado.
   @Cron('0 * * * * *')
   async autoRelease(): Promise<number> {
-    const threshold = new Date(Date.now() - AUTO_RELEASE_MIN * 60_000);
+    const freshThreshold = new Date(Date.now() - AUTO_RELEASE_MIN * 60_000);
     const stale = await this.prisma.tarjaReport.findMany({
-      where: { status: 'BORRADOR', startedAt: { lt: threshold } },
+      where: { status: 'BORRADOR', finishedAt: null, startedAt: { lt: freshThreshold } },
       select: { id: true, vehicleId: true, operationId: true },
     });
     for (const r of stale) {
@@ -271,6 +378,26 @@ export class TarjaService {
         description: `Vehiculo ${r.vehicleId} auto-liberado (borrador ${r.id})`,
       });
     }
-    return stale.length;
+
+    const reopenThreshold = new Date(Date.now() - REOPEN_WINDOW_MIN * 60_000);
+    const abandoned = await this.prisma.tarjaReport.findMany({
+      where: { status: 'BORRADOR', finishedAt: { lt: reopenThreshold } },
+      select: { id: true, vehicleId: true, operationId: true, hasDamage: true },
+    });
+    for (const r of abandoned) {
+      await this.revertReopen(r.id, r.vehicleId, r.hasDamage);
+      this.realtime.emit('report.reopen_expired', {
+        vehicleId: r.vehicleId,
+        operationId: r.operationId,
+        reportId: r.id,
+      });
+      this.audit.record({
+        module: 'tarja',
+        action: 'REOPEN_EXPIRED',
+        description: `Reporte ${r.id} revertido al vencer la ventana de edición`,
+      });
+    }
+
+    return stale.length + abandoned.length;
   }
 }

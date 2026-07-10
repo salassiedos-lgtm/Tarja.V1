@@ -92,4 +92,50 @@ export class OperationsService {
     });
     return this.withShipName(op);
   }
+
+  /**
+   * Elimina un lote (operación) completo con su trabajo asociado, como en USR:
+   * reportes (+accesorios/daños en cascada), anulaciones, vehículos, B/L e imports.
+   * Acción destructiva y exclusiva de ADMIN. El orden respeta las llaves foráneas:
+   * primero se rompen los punteros vehículo→reporte y la auto-relación de reemplazo.
+   */
+  async remove(id: number, userId: number) {
+    const op = await this.prisma.operation.findUnique({
+      where: { id },
+      include: { _count: { select: { vehicles: true, reports: true } } },
+    });
+    if (!op) throw new NotFoundException('Operacion no encontrada');
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1) Suelta el puntero currentReportId (unique FK vehículo→reporte) y locks.
+      await tx.vehicle.updateMany({
+        where: { operationId: id },
+        data: { currentReportId: null, lockedById: null, lockedAt: null },
+      });
+      // 2) Anulaciones (FK a reporte/vehículo/usuarios, sin cascada).
+      await tx.tarjaReportAnnulment.deleteMany({ where: { report: { operationId: id } } });
+      // 3) Rompe la auto-relación de reemplazo para que el orden de borrado no importe.
+      await tx.tarjaReport.updateMany({
+        where: { operationId: id },
+        data: { replacedById: null },
+      });
+      // 4) Reportes (accesorios y daños se borran en cascada por onDelete: Cascade).
+      await tx.tarjaReport.deleteMany({ where: { operationId: id } });
+      // 5) Resto de dependientes del lote.
+      await tx.operationImport.deleteMany({ where: { operationId: id } });
+      await tx.vehicle.deleteMany({ where: { operationId: id } });
+      await tx.billOfLading.deleteMany({ where: { operationId: id } });
+      await tx.operation.delete({ where: { id } });
+    });
+
+    this.audit.record({
+      userId,
+      module: 'operations',
+      action: 'DELETE',
+      description: `Lote ${op.code} eliminado (${op._count.vehicles} vehículos, ${op._count.reports} reportes)`,
+      oldValue: op.code,
+    });
+
+    return { deleted: true, code: op.code };
+  }
 }

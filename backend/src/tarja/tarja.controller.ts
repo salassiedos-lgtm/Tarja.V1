@@ -49,6 +49,12 @@ export class TarjaController {
     return this.service.finish(id, dto);
   }
 
+  @Roles('TARJADOR')
+  @Post('tarja/:id/reopen')
+  reopen(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.reopen(id, user.userId);
+  }
+
   @Get('tarja/:id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.service.findOne(id);

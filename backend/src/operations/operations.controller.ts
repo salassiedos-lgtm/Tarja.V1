@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -59,5 +60,11 @@ export class OperationsController {
   @Post(':id/close')
   close(@Param('id', ParseIntPipe) id: number) {
     return this.service.setStatus(id, OperationStatus.CERRADA);
+  }
+
+  @Roles('ADMIN')
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.remove(id, user.userId);
   }
 }
