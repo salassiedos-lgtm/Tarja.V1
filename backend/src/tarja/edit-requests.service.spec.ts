@@ -6,7 +6,7 @@ import type { RealtimeService } from '../realtime/realtime.service';
 function make(over: Partial<Record<string, unknown>> = {}) {
   const prisma = {
     tarjaReport: { findUnique: jest.fn() },
-    tarjaEditRequest: { findFirst: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    tarjaEditRequest: { findFirst: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     vehicle: { update: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prismaTx)),
     ...over,
@@ -41,5 +41,23 @@ describe('EditRequestsService.create', () => {
     });
     (prisma.tarjaEditRequest.findFirst as jest.Mock).mockResolvedValue({ id: 99, status: 'PENDIENTE' });
     await expect(svc.create(1, 5, { reason: 'x' })).rejects.toThrow('existe');
+  });
+});
+
+describe('EditRequestsService.resolve', () => {
+  it('rechaza si la solicitud ya fue resuelta', async () => {
+    const { svc, prisma } = make();
+    (prisma.tarjaEditRequest.findUnique as jest.Mock).mockResolvedValue({ id: 5, status: 'APROBADA' });
+    await expect(svc.resolve(5, 9, { approve: true })).rejects.toThrow('resuelta');
+  });
+});
+
+describe('EditRequestsService.cancel', () => {
+  it('rechaza si la solicitud no está APROBADA', async () => {
+    const { svc, prisma } = make();
+    (prisma.tarjaEditRequest.findUnique as jest.Mock).mockResolvedValue({
+      id: 5, status: 'PENDIENTE', report: { id: 1, vehicleId: 2, hasDamage: false, reportCode: '000001' },
+    });
+    await expect(svc.cancel(5, 9)).rejects.toThrow('en curso');
   });
 });
