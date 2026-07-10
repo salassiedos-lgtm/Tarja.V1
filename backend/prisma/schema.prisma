@@ -73,6 +73,13 @@ enum WorkShift {
   NOCHE
 }
 
+enum EditRequestStatus {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+  COMPLETADA
+}
+
 model Role {
   id          Int      @id @default(autoincrement())
   name        RoleName @unique
@@ -108,6 +115,8 @@ model User {
   annulmentsAsTarjador  TarjaReportAnnulment[] @relation("AnnulTarjador")
   annulmentsAsSupervisor TarjaReportAnnulment[] @relation("AnnulSupervisor")
   auditLogs             AuditLog[]
+  editRequestsMade     TarjaEditRequest[] @relation("EditReqRequester")
+  editRequestsResolved TarjaEditRequest[] @relation("EditReqResolver")
 
   @@map("users")
 }
@@ -253,6 +262,8 @@ model TarjaReport {
   accessories TarjaReportAccessory[]
   damages     TarjaReportDamage[]
   annulments  TarjaReportAnnulment[]
+  editSnapshot Json?               @map("edit_snapshot")
+  editRequests TarjaEditRequest[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -323,4 +334,24 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model TarjaEditRequest {
+  id             Int               @id @default(autoincrement())
+  reportId       Int               @map("report_id")
+  report         TarjaReport       @relation(fields: [reportId], references: [id])
+  requestedById  Int               @map("requested_by")
+  requestedBy    User              @relation("EditReqRequester", fields: [requestedById], references: [id])
+  reason         String
+  status         EditRequestStatus @default(PENDIENTE)
+  resolvedById   Int?              @map("resolved_by")
+  resolvedBy     User?             @relation("EditReqResolver", fields: [resolvedById], references: [id])
+  resolvedAt     DateTime?         @map("resolved_at")
+  resolveComment String?           @map("resolve_comment")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([reportId])
+  @@map("tarja_edit_requests")
 }
