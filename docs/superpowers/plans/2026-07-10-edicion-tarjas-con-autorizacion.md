@@ -164,7 +164,10 @@ describe('canEnterEdit', () => {
     expect(canEnterEdit(base, 9, false, now)).toEqual({ allowed: false, code: 'NOT_OWNER' });
   });
   it('bloquea si no está finalizada', () => {
-    expect(canEnterEdit({ ...base, status: 'ANULADO' }, 5, false, now).code).toBe('NOT_FINALIZED');
+    expect(canEnterEdit({ ...base, status: 'ANULADO' }, 5, false, now)).toEqual({
+      allowed: false,
+      code: 'NOT_FINALIZED',
+    });
   });
   it('permite al dueño dentro de la ventana', () => {
     expect(canEnterEdit(base, 5, false, now)).toEqual({ allowed: true });
