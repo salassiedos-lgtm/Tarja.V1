@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import {
   listUsers,
@@ -328,6 +329,7 @@ function ResetPasswordModal({
 }
 
 export default function UsersPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ManagedUser[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -376,7 +378,7 @@ export default function UsersPage() {
   }, [items, query]);
 
   return (
-    <Shell>
+    <Shell onBack={() => router.push('/inicio')}>
       <section className="rise mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-muted">Sistema</p>
@@ -422,79 +424,73 @@ export default function UsersPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-line bg-white">
-          <table className="w-full text-left text-[13px]">
-            <thead>
-              <tr className="border-b border-line bg-canvas text-[10.5px] uppercase tracking-[0.1em] text-muted">
-                <th className="px-4 py-3 font-semibold">Nombre</th>
-                <th className="px-4 py-3 font-semibold">Usuario</th>
-                <th className="px-4 py-3 font-semibold">Email</th>
-                <th className="px-4 py-3 font-semibold">Rol</th>
-                <th className="px-4 py-3 font-semibold">Estado</th>
-                <th className="px-4 py-3 font-semibold text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((u) => {
-                const manageable = canManage(actorRole, u.role.name);
-                const isSelf = me?.id === u.id;
-                return (
-                  <tr key={u.id} className="border-b border-line last:border-0 hover:bg-canvas/60">
-                    <td className="px-4 py-3 font-medium text-navy-900">
+        <div className="grid gap-2.5">
+          {filtered.map((u) => {
+            const manageable = canManage(actorRole, u.role.name);
+            const isSelf = me?.id === u.id;
+            return (
+              <div
+                key={u.id}
+                className="rounded-2xl border border-line bg-white px-4 py-3.5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-navy-900">
                       {u.name} {u.lastname}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[12px] text-muted">{u.username}</td>
-                    <td className="px-4 py-3 text-muted">{u.email}</td>
-                    <td className="px-4 py-3 text-muted">{ROLE_LABEL[u.role.name]}</td>
-                    <td className="px-4 py-3">
-                      {manageable && !isSelf ? (
-                        <button
-                          onClick={() => toggleStatus(u)}
-                          className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ring-1 ring-inset transition-colors ${
-                            u.status === 'ACTIVE'
-                              ? 'bg-jade-50 text-jade-600 ring-jade-600/15 hover:bg-jade-50/70'
-                              : 'bg-canvas text-muted ring-line hover:bg-line/40'
-                          }`}
-                        >
-                          {u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
-                        </button>
-                      ) : (
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[10.5px] font-semibold ring-1 ring-inset ${
-                            u.status === 'ACTIVE'
-                              ? 'bg-jade-50 text-jade-600 ring-jade-600/15'
-                              : 'bg-canvas text-muted ring-line'
-                          }`}
-                        >
-                          {u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {manageable && !isSelf && (
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setEditingUser(u)}
-                            title="Editar"
-                            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-navy-50 hover:text-navy-800"
-                          >
-                            <IconEdit className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setResettingUser(u)}
-                            title="Restablecer contraseña"
-                            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-navy-50 hover:text-navy-800"
-                          >
-                            <IconKey className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </p>
+                    <p className="mt-0.5 font-mono text-[12px] text-muted">{u.username}</p>
+                    <p className="mt-0.5 break-all text-[12.5px] text-muted">{u.email}</p>
+                  </div>
+                  {manageable && !isSelf ? (
+                    <button
+                      onClick={() => toggleStatus(u)}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold ring-1 ring-inset transition-colors ${
+                        u.status === 'ACTIVE'
+                          ? 'bg-jade-50 text-jade-600 ring-jade-600/15 hover:bg-jade-50/70'
+                          : 'bg-canvas text-muted ring-line hover:bg-line/40'
+                      }`}
+                    >
+                      {u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
+                    </button>
+                  ) : (
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold ring-1 ring-inset ${
+                        u.status === 'ACTIVE'
+                          ? 'bg-jade-50 text-jade-600 ring-jade-600/15'
+                          : 'bg-canvas text-muted ring-line'
+                      }`}
+                    >
+                      {u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-2.5">
+                  <span className="rounded-full bg-canvas px-2.5 py-1 text-[10.5px] font-semibold text-muted ring-1 ring-inset ring-line">
+                    {ROLE_LABEL[u.role.name]}
+                  </span>
+                  {manageable && !isSelf && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingUser(u)}
+                        title="Editar"
+                        className="rounded-lg p-1.5 text-muted transition-colors hover:bg-navy-50 hover:text-navy-800"
+                      >
+                        <IconEdit className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setResettingUser(u)}
+                        title="Restablecer contraseña"
+                        className="rounded-lg p-1.5 text-muted transition-colors hover:bg-navy-50 hover:text-navy-800"
+                      >
+                        <IconKey className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
