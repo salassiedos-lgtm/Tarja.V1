@@ -8,7 +8,10 @@ import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [TarjaController, EditRequestsController],
+  // EditRequestsController va PRIMERO: su ruta literal `/tarja/edit-requests`
+  // debe registrarse antes que el comodín `GET /tarja/:id` de TarjaController,
+  // que si no la ensombrece (ParseIntPipe -> 400 "numeric string expected").
+  controllers: [EditRequestsController, TarjaController],
   providers: [TarjaService, EditRequestsService, ReportCodeService],
 })
 export class TarjaModule {}
