@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Barcode, Camera, ChevronRight } from 'lucide-react';
+import { Barcode, Camera } from 'lucide-react';
 import Shell from '@/components/shell';
 import BarcodeScanner from '@/components/barcode-scanner';
 import OcrScanner from '@/components/ocr-scanner';
@@ -77,11 +77,17 @@ export default function BlTasksPage() {
   }
 
   return (
-    <Shell title={data ? `B/L ${data.blNumber}` : 'B/L'} onBack={() => router.push('/tablero')}>
+    <Shell title="Cuadro de tareas" onBack={() => router.push('/tablero')}>
       {data && (
-        <p className="muted" style={{ marginTop: -4, marginBottom: 12 }}>
-          {data.shipName} · {data.operationCode}
-        </p>
+        <div className="input" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span className="muted" style={{ fontSize: 12 }}>B/L</span>
+            <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 15 }}>{data.blNumber}</strong>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+            {data.shipName} · {data.operationCode}
+          </div>
+        </div>
       )}
 
       <div className="tabs">
@@ -165,14 +171,7 @@ export default function BlTasksPage() {
               <span className="badge pending">{v.blockedReason}</span>
             </div>
           ) : (
-            <button
-              key={v.vehicleId}
-              type="button"
-              className="task tap"
-              style={{ width: '100%', textAlign: 'left' }}
-              disabled={!!startingVin}
-              onClick={() => startFor(v)}
-            >
+            <div key={v.vehicleId} className="task">
               <div className="grow">
                 <div className="vin">{v.vin}</div>
                 <div className="meta">
@@ -181,12 +180,18 @@ export default function BlTasksPage() {
                     .join(' · ') || '—'}
                 </div>
               </div>
-              {startingVin === v.vin ? (
-                <span className="badge pending">Iniciando…</span>
-              ) : (
-                <ChevronRight className="h-[18px] w-[18px]" style={{ color: 'var(--color-muted)' }} />
-              )}
-            </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="badge pending">Pendiente</span>
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={!!startingVin}
+                  onClick={() => startFor(v)}
+                >
+                  {startingVin === v.vin ? 'Iniciando…' : 'Abrir'}
+                </button>
+              </div>
+            </div>
           ),
         )
       )}
