@@ -383,4 +383,17 @@ body {
 
   .login-wrap { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 24px; max-width: 420px; margin: 0 auto; }
   .login-logo-img { display: block; width: 148px; height: auto; margin: 0 auto 10px; }
+
+  /* Escáner: cámara + OCR / código de barras */
+  .scan-box { border: 2px dashed var(--color-blue); border-radius: 12px; padding: 12px; margin: 8px 0; }
+  .cam-wrap { position: relative; border-radius: 10px; overflow: hidden; background: #000; }
+  .cam-video { width: 100%; display: block; max-height: 60vh; object-fit: cover; }
+  .cam-guide {
+    position: absolute; left: 7%; right: 7%; top: 35%; height: 30%;
+    border: 2px solid rgba(255,255,255,.9); border-radius: 8px;
+    box-shadow: 0 0 0 100vmax rgba(0,0,0,.35);
+  }
+  .countdown { font-size: 12px; color: var(--color-amber); font-weight: 600; }
+  .linkbtn { background: none; border: none; color: var(--color-blue); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; }
+  .searchnote { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-muted); margin-bottom: 12px; }
 }
