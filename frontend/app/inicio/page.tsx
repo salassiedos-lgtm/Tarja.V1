@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import { getUser, type AuthUser, type Role } from '@/lib/api';
-import { ClipboardList, ShieldCheck, Users } from 'lucide-react';
+import { CalendarClock, ClipboardList, ShieldCheck, Users } from 'lucide-react';
 
 type Mod = { key: string; title: string; desc: string; to: string; icon: React.ReactNode; roles: Role[] };
 
 const MODS: Mod[] = [
-  { key: 'bls', title: 'Cuadro de Tareas', desc: 'Avance de tarja por B/L', to: '/tarja', icon: <ClipboardList className="h-5 w-5" />, roles: ['ADMIN', 'SUPERVISOR', 'TARJADOR'] },
+  { key: 'bls', title: 'Cuadro de Tareas', desc: 'Avance de tarja por B/L', to: '/tablero', icon: <ClipboardList className="h-5 w-5" />, roles: ['ADMIN', 'SUPERVISOR', 'TARJADOR'] },
+  { key: 'turno', title: 'Avance por turno', desc: 'Reporte de tarja por turno (imprimible)', to: '/reportes/turno', icon: <CalendarClock className="h-5 w-5" />, roles: ['ADMIN', 'SUPERVISOR'] },
   { key: 'admin', title: 'Administrador', desc: 'Lotes, avance e impresión de reportes', to: '/operations', icon: <ShieldCheck className="h-5 w-5" />, roles: ['ADMIN'] },
   { key: 'users', title: 'Usuarios', desc: 'Altas, roles y accesos', to: '/users', icon: <Users className="h-5 w-5" />, roles: ['ADMIN', 'SUPERVISOR'] },
 ];

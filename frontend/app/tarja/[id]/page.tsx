@@ -23,6 +23,7 @@ import {
   setReportAccessories,
   setReportDamages,
   finishTarja,
+  reopenTarja,
   getUser,
   type TarjaReport,
   type Accessory,
@@ -166,6 +167,8 @@ export default function TarjaFormPage() {
   const [initials, setInitials] = useState(getUser()?.initials ?? '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenLeft, setReopenLeft] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
 
   const elapsed = useElapsed(report?.startedAt);
@@ -196,7 +199,40 @@ export default function TarjaFormPage() {
     load();
   }, [load]);
 
+  // Cuenta regresiva de la ventana de edición de 10 min (solo cuando está finalizada).
+  useEffect(() => {
+    if (!report || report.status === 'BORRADOR') {
+      setReopenLeft(0);
+      return;
+    }
+    const initial = report.reopenSecondsLeft ?? 0;
+    setReopenLeft(initial);
+    if (initial <= 0) return;
+    const deadline = Date.now() + initial * 1000;
+    const t = setInterval(() => {
+      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setReopenLeft(left);
+      if (left <= 0) clearInterval(t);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [report]);
+
   const present = useMemo(() => Object.values(acc).filter((a) => a.has).length, [acc]);
+
+  const isOwner = getUser()?.id === report?.tarjadorId;
+
+  async function reopen() {
+    setReopening(true);
+    setError('');
+    try {
+      await reopenTarja(id);
+      await load(); // vuelve a BORRADOR: re-renderiza el formulario de edición
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo reabrir la tarja');
+    } finally {
+      setReopening(false);
+    }
+  }
 
   function setAll(has: boolean) {
     setAcc((s) => {
@@ -248,10 +284,14 @@ export default function TarjaFormPage() {
         damageMomentOther: hasDamage && dMoment === 'OTROS' ? dOther.trim() : undefined,
         descriptions: hasDamage ? findings : [],
       });
-      const r = await finishTarja(id, { initials: initials || undefined });
-      router.push(`/operations/${r.operationId}`);
+      await finishTarja(id, { initials: initials || undefined });
+      // No redirige: recarga para mostrar el estado finalizado con la ventana de
+      // edición de 10 min, por si el tarjador necesita corregir algo.
+      await load();
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al finalizar');
+    } finally {
       setBusy(false);
     }
   }
@@ -344,16 +384,45 @@ export default function TarjaFormPage() {
               <p className="font-display text-[17px] font-bold text-jade-700">
                 Tarja finalizada
               </p>
-              <p className="mt-1 text-[13px] text-jade-700/70">
-                Este reporte ya no admite cambios.
-              </p>
+              {isOwner && reopenLeft > 0 ? (
+                <p className="mt-1 text-[13px] text-jade-700/70">
+                  Puedes corregirla durante{' '}
+                  <span className="tnum font-semibold text-jade-700">
+                    {Math.floor(reopenLeft / 60)}:{String(reopenLeft % 60).padStart(2, '0')}
+                  </span>
+                  .
+                </p>
+              ) : (
+                <p className="mt-1 text-[13px] text-jade-700/70">
+                  La ventana de edición terminó. Para cambios, pide una anulación al supervisor.
+                </p>
+              )}
             </div>
-            <Link href={`/operations/${report.operationId}`}>
-              <Button variant="outline">
-                Volver a la operación
-                <IconArrow className="h-4 w-4" />
+
+            {error && (
+              <div className="w-full max-w-sm">
+                <Alert>{error}</Alert>
+              </div>
+            )}
+
+            {isOwner && reopenLeft > 0 && (
+              <Button onClick={reopen} disabled={reopening}>
+                {reopening ? 'Reabriendo…' : 'Reabrir para corregir'}
               </Button>
-            </Link>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
+              <Button variant="outline" onClick={() => router.push('/tarja')}>
+                <IconPlus className="h-4 w-4" />
+                Tarjar otra unidad
+              </Button>
+              <Link href={`/operations/${report.operationId}`}>
+                <Button variant="ghost">
+                  Ver la operación
+                  <IconArrow className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
           </div>
         ) : (
           <>

@@ -179,6 +179,9 @@ export const createOperation = (d: {
 }) => apiJson<Operation>('/operations', 'POST', d);
 export const setOperationStatus = (id: number, action: 'activate' | 'pause' | 'close') =>
   apiJson<Operation>(`/operations/${id}/${action}`, 'POST');
+/** Elimina un lote (operación) completo con su trabajo asociado. Solo ADMIN. Destructivo. */
+export const deleteOperation = (id: number) =>
+  apiJson<{ deleted: boolean; code: string }>(`/operations/${id}`, 'DELETE');
 
 // ---------------- accesorios ----------------
 export const listAccessories = () => apiGet<Accessory[]>('/accessories');
@@ -220,6 +223,46 @@ export const listVehicles = (operationId: number | string, vin?: string) =>
     `/operations/${operationId}/vehicles${vin ? `?vin=${encodeURIComponent(vin)}` : ''}`,
   );
 
+// ---------------- tablero por B/L (Cuadro de Tareas) ----------------
+export interface BlBoardRow {
+  billOfLadingId: number;
+  blNumber: string;
+  operationId: number;
+  operationCode: string;
+  shipName: string;
+  total: number;
+  done: number;
+  inProcess: number;
+  pending: number;
+  containers: number;
+  percent: number;
+}
+export const getBlBoard = () => apiGet<BlBoardRow[]>('/bls/board');
+
+export interface BlVehicle {
+  vehicleId: number;
+  vin: string;
+  status: string;
+  brand: string | null;
+  model: string | null;
+  containerNumber: string | null;
+  currentReportId: number | null;
+  done: boolean;
+  blocked: boolean;
+  blockedReason: string | null;
+}
+export interface BlVehicles {
+  billOfLadingId: number;
+  blNumber: string;
+  operationId: number;
+  operationCode: string;
+  operationStatus: string;
+  shipName: string;
+  vehicles: BlVehicle[];
+}
+export const getBlVehicles = (blId: number | string) =>
+  apiGet<BlVehicles>(`/bls/${blId}/vehicles`);
+
 /** Fila de GET /vehicles/search. `blocked` y `blockedReason` los calcula el backend. */
 export interface VehicleSearchRow {
   vehicleId: number;
@@ -255,8 +298,12 @@ export interface TarjaReport {
   hasDamage: boolean;
   vehicleId: number;
   operationId: number;
+  tarjadorId?: number;
   startedAt: string | null;
+  finishedAt?: string | null;
   tarjadorInitials: string | null;
+  /** Segundos restantes de la ventana de edición de 10 min (0 si venció/no aplica). */
+  reopenSecondsLeft?: number;
   vehicle?: { vin: string; brand: string | null };
   accessories?: ReportAccessory[];
   damages?: ReportDamage[];
@@ -283,6 +330,9 @@ export const setReportDamages = (id: number | string, d: DamageInput) =>
   apiJson<TarjaReport>(`/tarja/${id}/damages`, 'PATCH', d);
 export const finishTarja = (id: number | string, d: { details?: string; initials?: string }) =>
   apiJson<TarjaReport>(`/tarja/${id}/finish`, 'POST', d);
+/** Reabre la tarja recién finalizada (solo el dueño, dentro de la ventana de 10 min). */
+export const reopenTarja = (id: number | string) =>
+  apiJson<TarjaReport>(`/tarja/${id}/reopen`, 'POST');
 
 // ---------------- supervisión / reportes ----------------
 export interface ProgressData {
@@ -304,12 +354,20 @@ export interface ReportRow {
   tarjador?: { username: string; initials: string | null };
   operation?: { code: string; shipName?: string };
 }
+export interface DashboardTrendPoint {
+  day: string;
+  tarjadas: number;
+  enProceso: number;
+  conDano: number;
+  avgDurationSeconds: number;
+}
 export interface DashboardStats {
   tarjadas: number;
   enProceso: number;
   conDano: number;
   avgDurationSeconds: number;
   activeShips: number;
+  trend: DashboardTrendPoint[];
 }
 export interface DashboardData {
   operations: (Operation & { _count?: { vehicles: number }; doneVehicles?: number })[];
@@ -324,6 +382,32 @@ export const listReports = (operationId?: number) =>
   apiGet<ReportRow[]>(`/reports${operationId ? `?operationId=${operationId}` : ''}`);
 export const annulReport = (reportId: number, reason: string, comment?: string) =>
   apiJson<ReportRow>(`/reports/${reportId}/annul`, 'POST', { reason, comment });
+
+export type WorkShift = 'DIA' | 'NOCHE';
+export interface ShiftReportRow {
+  reportCode: string;
+  vin: string | null;
+  container: string | null;
+  brand: string | null;
+  model: string | null;
+  vessel: string | null;
+  bl: string | null;
+  tarjador: string | null;
+  initials: string | null;
+  hasDamage: boolean;
+  durationSeconds: number | null;
+}
+export interface ShiftReport {
+  date: string;
+  shift: WorkShift;
+  total: number;
+  damaged: number;
+  undamaged: number;
+  avgSeconds: number | null;
+  rows: ShiftReportRow[];
+}
+export const getShiftReport = (date: string, shift: WorkShift) =>
+  apiGet<ShiftReport>(`/reports/shift?date=${encodeURIComponent(date)}&shift=${shift}`);
 
 export interface AuditLog {
   id: number;
