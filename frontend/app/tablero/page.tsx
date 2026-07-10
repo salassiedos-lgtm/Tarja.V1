@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { Search, Car, CheckCircle2, Clock } from 'lucide-react';
 import Shell from '@/components/shell';
 import { getBlBoard, type BlBoardRow } from '@/lib/api';
 
@@ -12,10 +12,28 @@ function pctClass(p: number): string {
   return 'lo';
 }
 
+function filterAndSortRows(rows: BlBoardRow[], query: string): BlBoardRow[] {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter(
+        (r) => r.blNumber.toLowerCase().includes(q) || r.shipName.toLowerCase().includes(q),
+      )
+    : rows;
+
+  return [...filtered].sort((a, b) => {
+    const aDone = a.pending === 0;
+    const bDone = b.pending === 0;
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    if (b.pending !== a.pending) return b.pending - a.pending;
+    return a.percent - b.percent;
+  });
+}
+
 export default function TableroPage() {
   const router = useRouter();
   const [rows, setRows] = useState<BlBoardRow[] | null>(null);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -31,23 +49,38 @@ export default function TableroPage() {
     load();
   }, [load]);
 
+  const visibleRows = useMemo(
+    () => (rows ? filterAndSortRows(rows, query) : null),
+    [rows, query],
+  );
+
   return (
     <Shell title="Cuadro de Tareas" onBack={() => router.push('/inicio')}>
-      <button className="btn" style={{ marginBottom: 14 }} onClick={() => router.push('/tarja')}>
-        <Search className="h-4 w-4" /> Buscar VIN / Nueva tarja
-      </button>
+      <div className="searchrow" style={{ marginBottom: 14 }}>
+        <input
+          className="input"
+          placeholder="Buscar por B/L o nave…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <span className="scanbtn" aria-hidden="true">
+          <Search className="h-4 w-4" />
+        </span>
+      </div>
 
       {error && <div className="error">{error}</div>}
 
       {rows === null ? (
-        <div className="empty">Cargando tablero…</div>
-      ) : rows.length === 0 ? (
+        <TableroSkeleton />
+      ) : visibleRows && visibleRows.length === 0 ? (
         <div className="empty">
-          No hay B/L en lotes abiertos. Pídele al administrador que abra un lote.
+          {query
+            ? `No se encontraron B/L para "${query}".`
+            : 'No hay B/L en lotes abiertos. Pídele al administrador que abra un lote.'}
         </div>
       ) : (
-        rows.map((bl) => (
-          <div key={bl.billOfLadingId} className="card">
+        visibleRows!.map((bl) => (
+          <div key={bl.billOfLadingId} className={`card bl bl-${pctClass(bl.percent)}`}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, wordBreak: 'break-all' }}>
@@ -66,14 +99,17 @@ export default function TableroPage() {
 
             <div className="bl-counts">
               <div className="stat">
+                <Car className="h-4 w-4" aria-hidden="true" />
                 <span className="n tnum">{bl.total}</span>
                 <span className="l">Chasis</span>
               </div>
               <div className="stat ok">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                 <span className="n tnum">{bl.done}</span>
                 <span className="l">Tarjados</span>
               </div>
               <div className="stat warn">
+                <Clock className="h-4 w-4" aria-hidden="true" />
                 <span className="n tnum">{bl.pending}</span>
                 <span className="l">Por tarjar</span>
               </div>
@@ -90,5 +126,20 @@ export default function TableroPage() {
         ))
       )}
     </Shell>
+  );
+}
+
+function TableroSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="card bl skeleton-card" aria-hidden="true">
+          <div className="skeleton" style={{ width: '60%', height: 15 }} />
+          <div className="skeleton" style={{ width: '40%', height: 12, marginTop: 8 }} />
+          <div className="skeleton" style={{ width: '100%', height: 6, marginTop: 16 }} />
+          <div className="skeleton" style={{ width: '100%', height: 46, marginTop: 12 }} />
+        </div>
+      ))}
+    </>
   );
 }
