@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Shell from '@/components/shell';
 import {
   queryAuditLogs,
@@ -249,6 +250,7 @@ function SkeletonRows() {
 /* ────────────────────────────────  página  ─────────────────────────────────── */
 
 export default function AuditPage() {
+  const router = useRouter();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -360,7 +362,7 @@ export default function AuditPage() {
   };
 
   return (
-    <Shell>
+    <Shell title="Auditoría" onBack={() => router.push('/inicio')}>
       {/* ── Command Deck ── */}
       <div className="rise relative overflow-hidden rounded-[22px] border border-navy-900/30 bg-navy-900 text-white shadow-[0_24px_60px_-32px_rgba(4,24,42,0.85)]">
         <div className="grain absolute inset-0" />
@@ -420,7 +422,7 @@ export default function AuditPage() {
       </div>
 
       {/* ── KPIs ── */}
-      <div className="mt-5 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3.5">
         <Kpi icon={Activity} label="Eventos totales" value={total} hint={`${logs.length} cargados`} accent="#12558f" delay={40} />
         <Kpi icon={ShieldCheck} label="Hoy" value={stats.today} hint="acciones de la jornada" accent="#0d7a63" delay={90} />
         <Kpi icon={Users} label="Usuarios" value={stats.users} hint="usuarios distintos" accent="#a56a06" delay={140} />

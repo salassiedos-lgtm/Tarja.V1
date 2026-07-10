@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { io, type Socket } from 'socket.io-client';
 import Shell from '@/components/shell';
 import {
   API_URL,
   getMonitoringLive,
   type MonitorLive,
-  type MonitorFinished,
   type MonitorInProgress,
   type MonitorTarjador,
 } from '@/lib/api';
@@ -251,6 +251,7 @@ function TarjadorRow({ t: row, now }: { t: MonitorTarjador; now: number }) {
 /* ────────────────────────────────  página  ─────────────────────────────────── */
 
 export default function MonitoreoPage() {
+  const router = useRouter();
   const [data, setData] = useState<MonitorLive | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -312,7 +313,7 @@ export default function MonitoreoPage() {
   const isNight = stats?.shift === 'NOCHE';
 
   return (
-    <Shell>
+    <Shell title="Monitoreo" onBack={() => router.push('/inicio')}>
       {/* ── Command Deck ── */}
       <div className="rise relative overflow-hidden rounded-[22px] border border-navy-900/30 bg-navy-900 text-white shadow-[0_24px_60px_-32px_rgba(4,24,42,0.85)]">
         <div className="grain absolute inset-0" />
@@ -365,7 +366,7 @@ export default function MonitoreoPage() {
       </div>
 
       {/* ── KPIs ── */}
-      <div className="mt-5 grid grid-cols-2 gap-3.5 lg:grid-cols-5">
+      <div className="mt-5 grid grid-cols-2 gap-3.5">
         <Kpi icon={Users} label="Tarjadores activos" value={stats?.activeTarjadores ?? '—'} hint="tarjando ahora" accent="#0d7a63" delay={40} />
         <Kpi icon={Activity} label="En proceso" value={stats?.inProgressCount ?? '—'} hint="unidades en curso" accent="#12558f" delay={80} />
         <Kpi icon={CheckCircle2} label="Tarjadas turno" value={stats?.finishedCount ?? '—'} hint="cerradas este turno" accent="#5b56d6" delay={120} />
@@ -396,7 +397,7 @@ export default function MonitoreoPage() {
       </div>
 
       {loading ? (
-        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-40 animate-pulse rounded-2xl border border-line bg-white" />
           ))}
@@ -410,7 +411,7 @@ export default function MonitoreoPage() {
           <p className="mt-1 text-[12px] text-muted">Las unidades en proceso aparecerán aquí con su cronómetro.</p>
         </div>
       ) : (
-        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
           {inProgress.map((r, i) => (
             <LiveCard key={r.reportId} r={r} now={now} i={i} />
           ))}
@@ -460,31 +461,8 @@ export default function MonitoreoPage() {
             <p className="mt-1 text-[12px] text-muted">Las unidades finalizadas se listarán aquí.</p>
           </div>
         ) : (
-          <>
-            {/* desktop */}
-            <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-line text-left text-[10.5px] font-bold uppercase tracking-[0.1em] text-muted">
-                    <th className="px-5 py-3 font-bold">VIN</th>
-                    <th className="px-5 py-3 font-bold">Tarjador</th>
-                    <th className="px-5 py-3 font-bold">Operación</th>
-                    <th className="px-5 py-3 font-bold">Inicio → Fin</th>
-                    <th className="px-5 py-3 font-bold">Duración</th>
-                    <th className="px-5 py-3 font-bold">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line/70">
-                  {finished.map((r) => (
-                    <FinishedRow key={r.reportId} r={r} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* móvil */}
-            <div className="divide-y divide-line/70 lg:hidden">
-              {finished.map((r) => {
+          <div className="divide-y divide-line/70">
+            {finished.map((r) => {
                 const tone = paceTone(r.durationSeconds);
                 const t = TONE[tone];
                 return (
@@ -520,64 +498,8 @@ export default function MonitoreoPage() {
                 );
               })}
             </div>
-          </>
         )}
       </div>
     </Shell>
-  );
-}
-
-function FinishedRow({ r }: { r: MonitorFinished }) {
-  const tone = paceTone(r.durationSeconds);
-  const t = TONE[tone];
-  return (
-    <tr className="group transition-colors duration-150 hover:bg-navy-50/40">
-      <td className="relative px-5 py-3.5">
-        <span className="absolute inset-y-2 left-0 w-[3px] rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100" style={{ background: t.hex }} />
-        {r.vin ? (
-          <span className="tnum rounded-md bg-navy-50 px-1.5 py-0.5 font-mono text-[11.5px] font-semibold text-navy-800 ring-1 ring-navy-700/10">
-            {r.vin}
-          </span>
-        ) : (
-          <span className="text-muted/50">—</span>
-        )}
-      </td>
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={r.tarjador} initials={r.initials} />
-          <span className="text-[13px] font-semibold text-navy-900">{r.tarjador}</span>
-        </div>
-      </td>
-      <td className="px-5 py-3.5">
-        <span className="tnum font-mono text-[12px] font-medium text-navy-900">{r.operationCode ?? '—'}</span>
-        {r.vessel && <span className="ml-1.5 text-[11.5px] text-muted">· {r.vessel}</span>}
-      </td>
-      <td className="px-5 py-3.5">
-        <span className="tnum inline-flex items-center gap-1.5 text-[12.5px] text-ink/80">
-          <span className="font-semibold text-navy-900">{fmtHm(r.startedAt)}</span>
-          <ArrowRight className="h-3 w-3 text-muted/60" strokeWidth={2} />
-          <span className="font-semibold text-navy-900">{fmtHm(r.finishedAt)}</span>
-        </span>
-      </td>
-      <td className="px-5 py-3.5">
-        <span className={`tnum inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] font-semibold ring-1 ring-inset ${t.bg} ${t.text} ${t.ring}`}>
-          <Timer className="h-3.5 w-3.5" strokeWidth={2} />
-          {fmtDur(r.durationSeconds)}
-        </span>
-      </td>
-      <td className="px-5 py-3.5">
-        {r.hasDamage ? (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-ochre-50 px-2.5 py-1 text-[11.5px] font-semibold text-ochre-600 ring-1 ring-inset ring-ochre-600/20">
-            <TriangleAlert className="h-3.5 w-3.5" strokeWidth={2} />
-            Con daño
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-jade-50 px-2.5 py-1 text-[11.5px] font-semibold text-jade-600 ring-1 ring-inset ring-jade-600/20">
-            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-            Finalizado
-          </span>
-        )}
-      </td>
-    </tr>
   );
 }
