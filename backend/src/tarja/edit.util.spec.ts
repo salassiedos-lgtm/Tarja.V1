@@ -97,4 +97,13 @@ describe('snapshotOf / computeEditDiff', () => {
     expect(JSON.parse(diff.oldJson).hasDamage).toBe(false);
     expect(JSON.parse(diff.newJson).hasDamage).toBe(true);
   });
+
+  it('detecta cambio solo en la clasificación del daño', () => {
+    const dmg = { ...report, hasDamage: true, damageSource: 'ENCONTRADO', damageMoment: 'DURANTE_DESCARGA', damages: [{ description: 'x' }] };
+    const before = snapshotOf(dmg);
+    const after = snapshotOf({ ...dmg, damageMoment: 'POSTERIOR_DESCARGA' });
+    const diff = computeEditDiff(before, after);
+    expect(diff.changed).toBe(true);
+    expect(diff.summary).toContain('momento de daño DURANTE_DESCARGA→POSTERIOR_DESCARGA');
+  });
 });

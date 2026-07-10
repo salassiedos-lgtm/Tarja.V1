@@ -98,6 +98,14 @@ export function computeEditDiff(before: TarjaSnapshot, after: TarjaSnapshot): Ed
     const extra = after.hasDamage && after.damageSource ? ` (${after.damageSource})` : '';
     parts.push(`Daño ${yn(before.hasDamage)}→${yn(after.hasDamage)}${extra}`);
   }
+  if ((before.damageOperation ?? '') !== (after.damageOperation ?? ''))
+    parts.push(`operación de daño ${before.damageOperation ?? '—'}→${after.damageOperation ?? '—'}`);
+  if ((before.damageAffects ?? '') !== (after.damageAffects ?? ''))
+    parts.push(`afectación ${before.damageAffects ?? '—'}→${after.damageAffects ?? '—'}`);
+  if ((before.damageMoment ?? '') !== (after.damageMoment ?? ''))
+    parts.push(`momento de daño ${before.damageMoment ?? '—'}→${after.damageMoment ?? '—'}`);
+  if ((before.damageMomentOther ?? '') !== (after.damageMomentOther ?? ''))
+    parts.push('detalle de momento modificado');
   if ((before.details ?? '') !== (after.details ?? '')) parts.push('detalles modificados');
   if ((before.tarjadorInitials ?? '') !== (after.tarjadorInitials ?? '')) parts.push('iniciales modificadas');
 
