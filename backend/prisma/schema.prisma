@@ -140,6 +140,8 @@ model Operation {
   reports       TarjaReport[]
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
+  openedAt      DateTime?       @map("opened_at")
+  closedAt      DateTime?       @map("closed_at")
 
   @@map("operations")
 }

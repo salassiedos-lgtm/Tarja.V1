@@ -33,7 +33,12 @@ export class OperationsService {
       include: { ship: true, _count: { select: { vehicles: true, bills: true } } },
     });
     if (!op) throw new NotFoundException('Operacion no encontrada');
-    return this.withShipName(op);
+    const lastReport = await this.prisma.tarjaReport.findFirst({
+      where: { operationId: id, finishedAt: { not: null } },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true },
+    });
+    return { ...this.withShipName(op), lastReportAt: lastReport?.finishedAt ?? null };
   }
 
   async create(dto: CreateOperationDto, userId: number) {
@@ -49,6 +54,7 @@ export class OperationsService {
           operationDate: dto.operationDate ? new Date(dto.operationDate) : null,
           portDischarge: dto.portDischarge ?? 'Chancay',
           createdById: userId,
+          openedAt: new Date(),
         },
         include: { ship: true },
       });
@@ -84,10 +90,17 @@ export class OperationsService {
   }
 
   async setStatus(id: number, status: OperationStatus) {
-    await this.findOne(id);
+    const current = await this.findOne(id);
+    const data: { status: OperationStatus; openedAt?: Date; closedAt?: Date | null } = { status };
+    if (status === OperationStatus.ACTIVA) {
+      data.closedAt = null;
+      if (!current.openedAt) data.openedAt = new Date();
+    } else if (status === OperationStatus.CERRADA) {
+      data.closedAt = new Date();
+    }
     const op = await this.prisma.operation.update({
       where: { id },
-      data: { status },
+      data,
       include: { ship: true },
     });
     return this.withShipName(op);
