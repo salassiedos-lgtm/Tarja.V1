@@ -40,6 +40,6 @@ describe('EditRequestsService.create', () => {
       id: 1, tarjadorId: 5, status: 'FINALIZADO', finishedAt: new Date(Date.now() - 20 * 60_000),
     });
     (prisma.tarjaEditRequest.findFirst as jest.Mock).mockResolvedValue({ id: 99, status: 'PENDIENTE' });
-    await expect(svc.create(1, 5, { reason: 'x' })).rejects.toThrow('ya');
+    await expect(svc.create(1, 5, { reason: 'x' })).rejects.toThrow('existe');
   });
 });

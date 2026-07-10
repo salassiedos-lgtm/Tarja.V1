@@ -35,7 +35,7 @@ export class EditRequestsService {
     const active = await this.prisma.tarjaEditRequest.findFirst({
       where: { reportId, status: { in: ['PENDIENTE', 'APROBADA'] } },
     });
-    if (active) throw new BadRequestException('ya existe una solicitud de edición activa para esta tarja');
+    if (active) throw new BadRequestException('Ya existe una solicitud de edición activa para esta tarja');
 
     const created = await this.prisma.tarjaEditRequest.create({
       data: { reportId, requestedById: userId, reason: dto.reason },
