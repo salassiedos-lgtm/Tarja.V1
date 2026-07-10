@@ -31,6 +31,12 @@ export interface Operation {
   closedAt: string | null;
   lastReportAt?: string | null;
   _count?: { vehicles: number; bills: number };
+  // Enriquecidos por GET /operations (para las tarjetas del Administrador).
+  total?: number;
+  completed?: number;
+  pending?: number;
+  fileName?: string | null;
+  uploadedByName?: string | null;
 }
 
 export interface Accessory {
@@ -266,6 +272,44 @@ export interface BlVehicles {
 export const getBlVehicles = (blId: number | string) =>
   apiGet<BlVehicles>(`/bls/${blId}/vehicles`);
 
+// ---------------- tablero por NAVE (Cuadro de Tareas) ----------------
+export interface NaveBoardRow {
+  operationId: number;
+  operationCode: string;
+  shipName: string;
+  total: number;
+  done: number;
+  inProcess: number;
+  pending: number;
+  containers: number;
+  bls: number;
+  percent: number;
+}
+export const getNavesBoard = () => apiGet<NaveBoardRow[]>('/naves/board');
+
+export interface NaveVehicle {
+  vehicleId: number;
+  vin: string;
+  status: string;
+  brand: string | null;
+  model: string | null;
+  containerNumber: string | null;
+  blNumber: string | null;
+  currentReportId: number | null;
+  done: boolean;
+  blocked: boolean;
+  blockedReason: string | null;
+}
+export interface NaveVehicles {
+  operationId: number;
+  operationCode: string;
+  operationStatus: string;
+  shipName: string;
+  vehicles: NaveVehicle[];
+}
+export const getNaveVehicles = (opId: number | string) =>
+  apiGet<NaveVehicles>(`/naves/${opId}/vehicles`);
+
 /** Fila de GET /vehicles/search. `blocked` y `blockedReason` los calcula el backend. */
 export interface VehicleSearchRow {
   vehicleId: number;
@@ -385,6 +429,28 @@ export const listReports = (operationId?: number) =>
   apiGet<ReportRow[]>(`/reports${operationId ? `?operationId=${operationId}` : ''}`);
 export const annulReport = (reportId: number, reason: string, comment?: string) =>
   apiJson<ReportRow>(`/reports/${reportId}/annul`, 'POST', { reason, comment });
+/** Reabre una tarja finalizada: la unidad vuelve al cuadro de tareas para re-tarjar. */
+export const reopenReport = (reportId: number) =>
+  apiJson<ReportRow>(`/reports/${reportId}/reopen`, 'POST');
+
+/** Tarja ya registrada de un lote (operación), para la pantalla Reportes del Administrador. */
+export interface OperationReportRow {
+  id: number;
+  reportCode: string;
+  status: string;
+  hasDamage: boolean;
+  durationSeconds: number | null;
+  finishedAt: string | null;
+  vin: string | null;
+  chassisNumber: string | null;
+  brand: string | null;
+  model: string | null;
+  containerNumber: string | null;
+  tarjador: string | null;
+  initials: string | null;
+}
+export const listOperationReports = (operationId: number | string) =>
+  apiGet<OperationReportRow[]>(`/operations/${operationId}/reports`);
 
 export type WorkShift = 'DIA' | 'NOCHE';
 export interface ShiftReportRow {
@@ -420,20 +486,140 @@ export interface AuditLog {
   module: string;
   action: string;
   description: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  ipAddress?: string | null;
   createdAt: string;
 }
-export const listAuditLogs = (limit = 200) => apiGet<AuditLog[]>(`/audit?limit=${limit}`);
+export interface AuditQueryParams {
+  module?: string;
+  action?: string;
+  userId?: number;
+  from?: string;
+  to?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+export interface AuditPage {
+  rows: AuditLog[];
+  total: number;
+}
 
-export async function openReportPdf(reportId: number): Promise<void> {
-  const res = await fetch(`${API}/reports/${reportId}/pdf`, { headers: authHeaders() });
+function auditQs(params: AuditQueryParams): string {
+  const qs = new URLSearchParams();
+  if (params.module) qs.set('module', params.module);
+  if (params.action) qs.set('action', params.action);
+  if (params.userId != null) qs.set('userId', String(params.userId));
+  if (params.from) qs.set('from', params.from);
+  if (params.to) qs.set('to', params.to);
+  if (params.q) qs.set('q', params.q);
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.offset != null) qs.set('offset', String(params.offset));
+  return qs.toString();
+}
+
+export const queryAuditLogs = (params: AuditQueryParams = {}, signal?: AbortSignal) => {
+  const qs = auditQs(params);
+  return apiGet<AuditPage>(`/audit${qs ? `?${qs}` : ''}`, signal);
+};
+
+/** Descarga la auditoría filtrada como CSV (Excel-friendly). */
+export async function downloadAuditCsv(params: AuditQueryParams = {}): Promise<void> {
+  const qs = auditQs({ ...params, limit: undefined, offset: undefined });
+  const res = await fetch(`${API}/audit/export${qs ? `?${qs}` : ''}`, { headers: authHeaders() });
   if (res.status === 401) {
     clearSession();
     if (typeof window !== 'undefined') window.location.href = '/login';
     return;
   }
-  if (!res.ok) throw new Error('No se pudo generar el PDF');
+  if (!res.ok) throw new Error('No se pudo exportar la auditoría');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `auditoria-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// ---------------- monitoreo (avance en vivo del personal) ----------------
+export interface MonitorInProgress {
+  reportId: number;
+  reportCode: string;
+  vin: string | null;
+  brand: string | null;
+  model: string | null;
+  startedAt: string | null;
+  tarjadorId: number;
+  tarjador: string;
+  initials: string | null;
+  operationCode: string | null;
+  vessel: string | null;
+}
+export interface MonitorFinished extends MonitorInProgress {
+  finishedAt: string | null;
+  durationSeconds: number | null;
+  status: string;
+  hasDamage: boolean;
+}
+export interface MonitorTarjador {
+  tarjadorId: number;
+  tarjador: string;
+  initials: string | null;
+  inProgress: number;
+  currentStartedAt: string | null;
+  done: number;
+  damaged: number;
+  avgSeconds: number | null;
+  fast: number;
+  mid: number;
+  slow: number;
+}
+export interface MonitorStats {
+  date: string;
+  shift: WorkShift;
+  activeTarjadores: number;
+  inProgressCount: number;
+  finishedCount: number;
+  damagedCount: number;
+  avgSeconds: number | null;
+  fast: number;
+  mid: number;
+  slow: number;
+}
+export interface MonitorLive {
+  serverTime: string;
+  inProgress: MonitorInProgress[];
+  finished: MonitorFinished[];
+  byTarjador: MonitorTarjador[];
+  stats: MonitorStats;
+}
+export const getMonitoringLive = (signal?: AbortSignal) =>
+  apiGet<MonitorLive>('/monitoring/live', signal);
+
+async function openPdf(path: string, errorMsg: string): Promise<void> {
+  const res = await fetch(`${API}${path}`, { headers: authHeaders() });
+  if (res.status === 401) {
+    clearSession();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    return;
+  }
+  if (!res.ok) throw new Error(errorMsg);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export function openReportPdf(reportId: number): Promise<void> {
+  return openPdf(`/reports/${reportId}/pdf`, 'No se pudo generar el PDF');
+}
+
+/** Abre el PDF combinado de un lote (operación), opcionalmente filtrado por daños. */
+export function openOperationPdf(operationId: number, damage?: '0' | '1'): Promise<void> {
+  const qs = damage != null ? `?damage=${damage}` : '';
+  return openPdf(`/operations/${operationId}/pdf${qs}`, 'No se pudo generar el PDF del lote');
 }

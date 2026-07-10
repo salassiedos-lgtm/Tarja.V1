@@ -75,13 +75,34 @@ export class UsersService {
     if (dto.role) this.ensureCanManageRole(actor, dto.role);
 
     const data: Prisma.UserUpdateInput = {};
-    if (dto.name !== undefined) data.name = dto.name;
-    if (dto.lastname !== undefined) data.lastname = dto.lastname;
-    if (dto.email !== undefined) data.email = dto.email;
+    // Diff campo a campo para dejar en auditoría qué cambió (anterior → nuevo).
+    const before: Record<string, string> = {};
+    const after: Record<string, string> = {};
+    const changes: string[] = [];
+    const track = (field: string, oldVal: string, newVal: string) => {
+      if (oldVal === newVal) return;
+      before[field] = oldVal;
+      after[field] = newVal;
+      changes.push(`${field}: ${oldVal || '—'} → ${newVal || '—'}`);
+    };
+
+    if (dto.name !== undefined) {
+      data.name = dto.name;
+      track('nombre', target.name, dto.name);
+    }
+    if (dto.lastname !== undefined) {
+      data.lastname = dto.lastname;
+      track('apellido', target.lastname, dto.lastname);
+    }
+    if (dto.email !== undefined) {
+      data.email = dto.email;
+      track('email', target.email, dto.email);
+    }
     if (dto.role !== undefined) {
       const role = await this.prisma.role.findUnique({ where: { name: dto.role } });
       if (!role) throw new NotFoundException('Rol no encontrado');
       data.role = { connect: { id: role.id } };
+      track('rol', target.role.name, dto.role);
     }
 
     try {
@@ -92,7 +113,11 @@ export class UsersService {
         role: actor.role,
         module: 'users',
         action: 'USER_UPDATED',
-        description: `Usuario actualizado: ${user.username}`,
+        description: changes.length
+          ? `Usuario ${user.username}: ${changes.join(', ')}`
+          : `Usuario actualizado: ${user.username}`,
+        oldValue: changes.length ? JSON.stringify(before) : undefined,
+        newValue: changes.length ? JSON.stringify(after) : undefined,
       });
       return user;
     } catch (err) {
