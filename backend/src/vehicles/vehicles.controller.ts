@@ -41,7 +41,19 @@ export class VehiclesController {
     return this.service.search(q ?? '');
   }
 
-  // Tablero por B/L (Cuadro de Tareas). Declarado antes de 'vehicles/:id' por higiene de rutas.
+  // Tablero por NAVE (Cuadro de Tareas): un card por operación abierta, con
+  // todos sus chasis al entrar. Declarado antes de 'vehicles/:id' por higiene de rutas.
+  @Get('naves/board')
+  navesBoard() {
+    return this.service.navesBoard();
+  }
+
+  @Get('naves/:id/vehicles')
+  naveVehicles(@Param('id', ParseIntPipe) id: number) {
+    return this.service.naveVehicles(id);
+  }
+
+  // Tablero por B/L (se mantiene por compatibilidad; el frontend usa el de nave).
   @Get('bls/board')
   blBoard() {
     return this.service.blBoard();

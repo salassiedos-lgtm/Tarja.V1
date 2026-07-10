@@ -228,6 +228,121 @@ export class VehiclesService {
       .sort((a, b) => a.percent - b.percent || a.blNumber.localeCompare(b.blNumber));
   }
 
+  /**
+   * Tablero por NAVE (Cuadro de Tareas): un card por cada operación ABIERTA
+   * (ACTIVA), con el avance de tarja de TODA la nave (sumando sus B/L). El
+   * tarjador entra a una nave y ve todos sus chasis juntos, sin elegir un B/L.
+   */
+  async navesBoard() {
+    const DONE = ['TARJADO', 'OBSERVADO'];
+
+    const statusRows = await this.prisma.vehicle.groupBy({
+      by: ['operationId', 'status'],
+      where: { operation: { status: 'ACTIVA' } },
+      _count: { _all: true },
+    });
+    if (statusRows.length === 0) return [];
+
+    const opIds = [...new Set(statusRows.map((r) => r.operationId))];
+    const [ops, containerRows, blRows] = await Promise.all([
+      this.prisma.operation.findMany({
+        where: { id: { in: opIds } },
+        select: { id: true, code: true, ship: { select: { name: true } } },
+      }),
+      this.prisma.vehicle.groupBy({
+        by: ['operationId', 'containerNumber'],
+        where: { operationId: { in: opIds }, containerNumber: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.billOfLading.groupBy({
+        by: ['operationId'],
+        where: { operationId: { in: opIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byOp = new Map<number, { byStatus: Record<string, number>; containers: Set<string> }>();
+    for (const id of opIds) byOp.set(id, { byStatus: {}, containers: new Set() });
+    for (const r of statusRows) byOp.get(r.operationId)!.byStatus[r.status] = r._count._all;
+    for (const c of containerRows) {
+      if (c.containerNumber) byOp.get(c.operationId)?.containers.add(c.containerNumber);
+    }
+    const blsByOp = new Map(blRows.map((b) => [b.operationId, b._count._all]));
+
+    return ops
+      .map((op) => {
+        const e = byOp.get(op.id)!;
+        const total = Object.values(e.byStatus).reduce((a, b) => a + b, 0);
+        const done = DONE.reduce((a, s) => a + (e.byStatus[s] ?? 0), 0);
+        const inProcess = e.byStatus['EN_PROCESO'] ?? 0;
+        return {
+          operationId: op.id,
+          operationCode: op.code,
+          shipName: op.ship.name,
+          total,
+          done,
+          inProcess,
+          pending: total - done,
+          containers: e.containers.size,
+          bls: blsByOp.get(op.id) ?? 0,
+          percent: total ? Math.round((done / total) * 100) : 0,
+        };
+      })
+      .sort((a, b) => a.percent - b.percent || a.shipName.localeCompare(b.shipName));
+  }
+
+  /** Todos los chasis de una NAVE (operación) para la lista de tareas. */
+  async naveVehicles(operationId: number) {
+    const op = await this.prisma.operation.findUnique({
+      where: { id: operationId },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        ship: { select: { name: true } },
+      },
+    });
+    if (!op) throw new NotFoundException('Operación no encontrada');
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { operationId },
+      orderBy: [{ containerNumber: 'asc' }, { vin: 'asc' }],
+      select: {
+        id: true,
+        vin: true,
+        status: true,
+        brand: true,
+        model: true,
+        containerNumber: true,
+        currentReportId: true,
+        billOfLading: { select: { blNumber: true } },
+      },
+    });
+
+    return {
+      operationId: op.id,
+      operationCode: op.code,
+      operationStatus: op.status,
+      shipName: op.ship.name,
+      vehicles: vehicles.map((v) => {
+        const block = getVehicleBlock(v.status);
+        return {
+          vehicleId: v.id,
+          vin: v.vin,
+          status: v.status,
+          brand: v.brand,
+          model: v.model,
+          containerNumber: v.containerNumber,
+          blNumber: v.billOfLading?.blNumber ?? null,
+          currentReportId: v.currentReportId,
+          done: v.status === 'TARJADO' || v.status === 'OBSERVADO',
+          blocked: block !== null,
+          blockedReason: block?.label ?? null,
+        };
+      }),
+    };
+  }
+
   /** Chasis de un B/L para la lista de tareas (tabs Por tarjar / Realizados). */
   async blVehicles(blId: number) {
     const bl = await this.prisma.billOfLading.findUnique({

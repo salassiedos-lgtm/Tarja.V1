@@ -136,6 +136,74 @@ export class ReportsService {
     return updated;
   }
 
+  /**
+   * Reabre una tarja finalizada (acción de admin desde Reportes del lote).
+   * Como en USR, la unidad vuelve al cuadro de tareas para re-tarjar: el reporte
+   * queda REEMPLAZADO (queda en el historial) y el vehículo REABIERTO, liberado
+   * de lock y de currentReportId. No pide motivo (a diferencia de anular).
+   */
+  async reopen(reportId: number, userId: number) {
+    const report = await this.prisma.tarjaReport.findUnique({ where: { id: reportId } });
+    if (!report) throw new NotFoundException('Reporte no encontrado');
+    if (report.status !== 'FINALIZADO' && report.status !== 'CON_DANO') {
+      throw new BadRequestException('Solo se pueden reabrir reportes finalizados');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const r = await tx.tarjaReport.update({
+        where: { id: reportId },
+        data: { status: 'REEMPLAZADO' },
+      });
+      await tx.vehicle.update({
+        where: { id: report.vehicleId },
+        data: { status: 'REABIERTO', currentReportId: null, lockedById: null, lockedAt: null },
+      });
+      return r;
+    });
+
+    this.realtime.emit('report.reopened', {
+      reportId,
+      operationId: report.operationId,
+      vehicleId: report.vehicleId,
+    });
+    this.audit.record({
+      userId,
+      module: 'reports',
+      action: 'REOPEN',
+      description: `Reporte ${report.reportCode} reabierto para re-tarjar`,
+    });
+    return updated;
+  }
+
+  /** Tarjas ya registradas de un lote (operación), para la pantalla Reportes. */
+  async operationReports(operationId: number) {
+    const reports = await this.prisma.tarjaReport.findMany({
+      where: { operationId, status: { in: ['FINALIZADO', 'CON_DANO'] } },
+      orderBy: { finishedAt: 'desc' },
+      include: {
+        vehicle: {
+          select: { vin: true, chassisNumber: true, brand: true, model: true, containerNumber: true },
+        },
+        tarjador: { select: { name: true, lastname: true, initials: true } },
+      },
+    });
+    return reports.map((r) => ({
+      id: r.id,
+      reportCode: r.reportCode,
+      status: r.status,
+      hasDamage: r.hasDamage,
+      durationSeconds: r.durationSeconds,
+      finishedAt: r.finishedAt,
+      vin: r.vehicle?.vin ?? null,
+      chassisNumber: r.vehicle?.chassisNumber ?? null,
+      brand: r.vehicle?.brand ?? null,
+      model: r.vehicle?.model ?? null,
+      containerNumber: r.vehicle?.containerNumber ?? null,
+      tarjador: r.tarjador ? `${r.tarjador.name} ${r.tarjador.lastname}`.trim() : null,
+      initials: r.tarjador?.initials ?? null,
+    }));
+  }
+
   async progress(operationId: number) {
     const grouped = await this.prisma.vehicle.groupBy({
       by: ['status'],

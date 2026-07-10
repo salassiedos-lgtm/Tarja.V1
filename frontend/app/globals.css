@@ -420,6 +420,20 @@ body {
   .bl-pct.mid { background: var(--color-amber-50); color: var(--color-amber); }
   .bl-pct.hi { background: var(--color-green-50); color: var(--color-green); }
 
+  /* Cabecera de tarjeta de lote (Administrador → Tareas) */
+  .bl-head { display: flex; align-items: center; gap: 10px; }
+  .bl-no { flex: 1; font-family: var(--font-mono); font-weight: 700; font-size: 15px; }
+
+  /* Dashboard por nave: donut + tarjetas de cifras */
+  .dash { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .dash-cards { flex: 1; min-width: 200px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Tabla de fechas del lote/nave */
+  .dates { width: 100%; border-collapse: collapse; margin: 10px 0 4px; }
+  .dates th, .dates td { text-align: left; font-size: 12px; padding: 3px 0; font-weight: 400; }
+  .dates th { color: var(--color-muted); width: 42%; }
+  .dates td { font-variant-numeric: tabular-nums; }
+
   .modgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .mod {
     display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left;

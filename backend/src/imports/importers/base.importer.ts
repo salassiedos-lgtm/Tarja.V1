@@ -13,6 +13,11 @@ export abstract class BaseImporter {
   protected abstract readonly anchorHeader: string;
   /** Nombre legible para los mensajes de error. */
   protected abstract readonly formatName: string;
+  /**
+   * Factor que se aplica al peso leido para dejarlo SIEMPRE en kg.
+   * Desconsolidado/CFS ya viene en kg (1). RO-RO trae toneladas (1000).
+   */
+  protected readonly weightFactor: number = 1;
 
   async parse(buffer: Buffer): Promise<ImportedRow[]> {
     const ws = await this.loadSheet(buffer);
@@ -100,7 +105,8 @@ export abstract class BaseImporter {
     let weight: number | null = null;
     if (raw.weight) {
       const w = Number(raw.weight.replace(',', '.'));
-      if (Number.isFinite(w)) weight = w;
+      // El factor normaliza a kg; el redondeo a 2 decimales evita ruido de coma flotante.
+      if (Number.isFinite(w)) weight = Math.round(w * this.weightFactor * 100) / 100;
       else errors.push('Peso invalido');
     }
 

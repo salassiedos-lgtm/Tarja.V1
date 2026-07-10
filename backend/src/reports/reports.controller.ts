@@ -46,6 +46,18 @@ export class ReportsController {
     return this.service.annul(id, dto, user.userId);
   }
 
+  @Roles('SUPERVISOR', 'ADMIN')
+  @Post('reports/:id/reopen')
+  reopen(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.service.reopen(id, user.userId);
+  }
+
+  @Roles('SUPERVISOR', 'ADMIN')
+  @Get('operations/:id/reports')
+  operationReports(@Param('id', ParseIntPipe) id: number) {
+    return this.service.operationReports(id);
+  }
+
   @Get('operations/:id/progress')
   progress(@Param('id', ParseIntPipe) id: number) {
     return this.service.progress(id);

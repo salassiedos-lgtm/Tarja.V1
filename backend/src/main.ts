@@ -7,8 +7,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(helmet({ crossOriginResourcePolicy: false, contentSecurityPolicy: false }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  const frontendOrigins = (process.env.FRONTEND_ORIGIN ?? 'http://localhost:3001')
+    .split(',')
+    .map((o) => o.trim());
   app.enableCors({
-    origin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3001',
+    origin: frontendOrigins,
     credentials: true,
   });
   await app.listen(process.env.PORT ?? 3000);

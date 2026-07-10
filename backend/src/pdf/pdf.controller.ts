@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { PdfService } from './pdf.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,6 +17,22 @@ export class PdfController {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="reporte-${id}.pdf"`,
+      'Content-Length': String(buf.length),
+    });
+    res.end(buf);
+  }
+
+  @Roles('SUPERVISOR', 'ADMIN')
+  @Get('operations/:id/pdf')
+  async operationPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('damage') damage: string | undefined,
+    @Res() res: Response,
+  ) {
+    const buf = await this.service.generateOperation(id, damage);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="lote-${id}.pdf"`,
       'Content-Length': String(buf.length),
     });
     res.end(buf);

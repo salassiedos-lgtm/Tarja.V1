@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccessoryDto, UpdateAccessoryDto } from './dto/accessory.dto';
 
@@ -26,6 +26,18 @@ export class AccessoriesService {
   async update(id: number, dto: UpdateAccessoryDto) {
     await this.ensureExists(id);
     return this.prisma.accessory.update({ where: { id }, data: dto });
+  }
+
+  async remove(id: number) {
+    await this.ensureExists(id);
+    const inUse = await this.prisma.tarjaReportAccessory.count({ where: { accessoryId: id } });
+    if (inUse > 0) {
+      throw new BadRequestException(
+        'Este accesorio ya se usó en tarjas registradas y no se puede eliminar. Desactívalo en su lugar.',
+      );
+    }
+    await this.prisma.accessory.delete({ where: { id } });
+    return { id };
   }
 
   private async ensureExists(id: number) {

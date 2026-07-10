@@ -48,24 +48,8 @@ function accRow(a: PdfAccessoryRow | undefined): string {
   return `<td>${esc(a.name)}</td><td class="c">${a.hasAccessory ? 'SI' : 'NO'}</td><td class="c">${a.hasAccessory ? a.quantity : ''}</td>`;
 }
 
-export function renderReportHtml(
-  r: PdfReport,
-  accessories: PdfAccessoryRow[],
-  logoDataUri: string,
-): string {
-  const left = accessories.slice(0, 8);
-  const right = accessories.slice(8, 16);
-  const rows: string[] = [];
-  for (let i = 0; i < 8; i++) {
-    rows.push(`<tr>${accRow(left[i])}${accRow(right[i])}</tr>`);
-  }
-  const damages =
-    r.damages.length > 0
-      ? r.damages.map((d) => `<div>• ${esc(d.description)}</div>`).join('')
-      : `<div class="muted">Sin observaciones.</div>`;
-
-  return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><style>
+/** Estilos compartidos por el reporte individual y el documento combinado por lote. */
+const REPORT_STYLES = `
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 0; }
   table { border-collapse: collapse; width: 100%; }
@@ -86,8 +70,28 @@ export function renderReportHtml(
   .sign td { border: none; text-align: center; padding-top: 22px; }
   .sign .line { border-top: 1px solid #333; padding-top: 3px; font-size: 9px; }
   .damageblock { min-height: 48px; }
-</style></head><body>
+  .report { page-break-after: always; }
+  .report:last-child { page-break-after: auto; }
+`;
 
+/** Cuerpo de un reporte (sin <html>/<head>), reutilizable en documentos multi-tarja. */
+function renderReportSection(
+  r: PdfReport,
+  accessories: PdfAccessoryRow[],
+  logoDataUri: string,
+): string {
+  const left = accessories.slice(0, 8);
+  const right = accessories.slice(8, 16);
+  const rows: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    rows.push(`<tr>${accRow(left[i])}${accRow(right[i])}</tr>`);
+  }
+  const damages =
+    r.damages.length > 0
+      ? r.damages.map((d) => `<div>• ${esc(d.description)}</div>`).join('')
+      : `<div class="muted">Sin observaciones.</div>`;
+
+  return `<section class="report">
 <table class="head"><tr>
   <td style="width:170px"><img src="${logoDataUri}" style="width:150px" /></td>
   <td class="title"><h1>UNITS STATE REPORT</h1><p>REPORTE DE ESTADO DE UNIDADES</p></td>
@@ -153,6 +157,31 @@ export function renderReportHtml(
   <td><div class="line">Customs Agent / Consignee</div></td>
   <td><div class="line">Port — ${esc(r.tarjador?.initials ?? r.tarjadorInitials)}</div></td>
 </tr></table>
+</section>`;
+}
 
+function wrapDocument(bodyMarkup: string): string {
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><style>${REPORT_STYLES}</style></head><body>
+${bodyMarkup}
 </body></html>`;
+}
+
+/** Documento de una sola tarja. */
+export function renderReportHtml(
+  r: PdfReport,
+  accessories: PdfAccessoryRow[],
+  logoDataUri: string,
+): string {
+  return wrapDocument(renderReportSection(r, accessories, logoDataUri));
+}
+
+/** Documento con varias tarjas (una por página), para imprimir un lote completo. */
+export function renderReportsDocument(
+  items: { report: PdfReport; accessories: PdfAccessoryRow[] }[],
+  logoDataUri: string,
+): string {
+  return wrapDocument(
+    items.map((it) => renderReportSection(it.report, it.accessories, logoDataUri)).join('\n'),
+  );
 }

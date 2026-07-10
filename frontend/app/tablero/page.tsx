@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import Shell from '@/components/shell';
-import { getBlBoard, type BlBoardRow } from '@/lib/api';
+import { getNavesBoard, type NaveBoardRow } from '@/lib/api';
 
 function pctClass(p: number): string {
   if (p >= 100) return 'hi';
@@ -12,11 +12,11 @@ function pctClass(p: number): string {
   return 'lo';
 }
 
-function filterAndSortRows(rows: BlBoardRow[], query: string): BlBoardRow[] {
+function filterAndSortRows(rows: NaveBoardRow[], query: string): NaveBoardRow[] {
   const q = query.trim().toLowerCase();
   const filtered = q
     ? rows.filter(
-        (r) => r.blNumber.toLowerCase().includes(q) || r.shipName.toLowerCase().includes(q),
+        (r) => r.shipName.toLowerCase().includes(q) || r.operationCode.toLowerCase().includes(q),
       )
     : rows;
 
@@ -31,14 +31,14 @@ function filterAndSortRows(rows: BlBoardRow[], query: string): BlBoardRow[] {
 
 export default function TableroPage() {
   const router = useRouter();
-  const [rows, setRows] = useState<BlBoardRow[] | null>(null);
+  const [rows, setRows] = useState<NaveBoardRow[] | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setError('');
     try {
-      setRows(await getBlBoard());
+      setRows(await getNavesBoard());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar el tablero');
       setRows([]);
@@ -62,7 +62,7 @@ export default function TableroPage() {
         <input
           ref={searchInputRef}
           className="input"
-          placeholder="Buscar por B/L o nave…"
+          placeholder="Buscar por nave o código…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -83,39 +83,40 @@ export default function TableroPage() {
       ) : visibleRows && visibleRows.length === 0 ? (
         <div className="empty">
           {query
-            ? `No se encontraron B/L para "${query}".`
-            : 'No hay B/L en lotes abiertos. Pídele al administrador que abra un lote.'}
+            ? `No se encontraron naves para "${query}".`
+            : 'No hay naves en lotes abiertos. Pídele al administrador que abra un lote.'}
         </div>
       ) : (
-        visibleRows!.map((bl) => (
-          <div key={bl.billOfLadingId} className="card bl">
+        visibleRows!.map((nave) => (
+          <div key={nave.operationId} className="card bl">
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 15, wordBreak: 'break-all' }}>
-                  {bl.blNumber}
+                <div style={{ fontWeight: 700, fontSize: 16, wordBreak: 'break-word' }}>
+                  {nave.shipName}
                 </div>
                 <div className="muted" style={{ marginTop: 2 }}>
-                  {bl.shipName} · {bl.containers} {bl.containers === 1 ? 'contenedor' : 'contenedores'}
+                  {nave.operationCode} · {nave.bls} {nave.bls === 1 ? 'B/L' : 'B/L'} ·{' '}
+                  {nave.containers} {nave.containers === 1 ? 'contenedor' : 'contenedores'}
                 </div>
               </div>
-              <span className={`bl-pct ${pctClass(bl.percent)}`}>{bl.percent}%</span>
+              <span className={`bl-pct ${pctClass(nave.percent)}`}>{nave.percent}%</span>
             </div>
 
             <div className="bar">
-              <div className="bar-fill" style={{ width: `${bl.percent}%` }} />
+              <div className="bar-fill" style={{ width: `${nave.percent}%` }} />
             </div>
 
             <div className="bl-counts">
               <div className="cell">
-                <span className="n tnum">{bl.total}</span>
+                <span className="n tnum">{nave.total}</span>
                 <span className="l">Chasis</span>
               </div>
               <div className="cell ok">
-                <span className="n tnum">{bl.done}</span>
+                <span className="n tnum">{nave.done}</span>
                 <span className="l">Tarjados</span>
               </div>
               <div className="cell warn">
-                <span className="n tnum">{bl.pending}</span>
+                <span className="n tnum">{nave.pending}</span>
                 <span className="l">Por tarjar</span>
               </div>
             </div>
@@ -123,7 +124,7 @@ export default function TableroPage() {
             <button
               className="btn secondary"
               style={{ marginTop: 12 }}
-              onClick={() => router.push(`/tablero/${bl.billOfLadingId}`)}
+              onClick={() => router.push(`/tablero/${nave.operationId}`)}
             >
               Ver chasis
             </button>

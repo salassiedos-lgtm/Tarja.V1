@@ -6,17 +6,29 @@ import { Barcode, Camera } from 'lucide-react';
 import Shell from '@/components/shell';
 import BarcodeScanner from '@/components/barcode-scanner';
 import OcrScanner from '@/components/ocr-scanner';
-import { getBlVehicles, startTarja, type BlVehicle, type BlVehicles } from '@/lib/api';
+import { getNaveVehicles, startTarja, type NaveVehicle, type NaveVehicles } from '@/lib/api';
 import { extractVinFromScan } from '@/lib/vin-scan';
+
+/** Tope de filas dibujadas: una nave RO-RO puede traer miles de chasis; el
+ * tarjador ubica el suyo con el buscador/escáner, no bajando toda la lista. */
+const MAX_RENDER = 500;
 
 function cleanCode(s: string): string {
   return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-export default function BlTasksPage() {
-  const { blId } = useParams<{ blId: string }>();
+function vehicleMeta(v: NaveVehicle): string {
+  return (
+    [v.containerNumber, [v.brand, v.model].filter(Boolean).join(' '), v.blNumber && `B/L ${v.blNumber}`]
+      .filter(Boolean)
+      .join(' · ') || '—'
+  );
+}
+
+export default function NaveTasksPage() {
+  const { opId } = useParams<{ opId: string }>();
   const router = useRouter();
-  const [data, setData] = useState<BlVehicles | null>(null);
+  const [data, setData] = useState<NaveVehicles | null>(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'todo' | 'done'>('todo');
   const [q, setQ] = useState('');
@@ -26,11 +38,11 @@ export default function BlTasksPage() {
   const load = useCallback(async () => {
     setError('');
     try {
-      setData(await getBlVehicles(blId));
+      setData(await getNaveVehicles(opId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar el B/L');
+      setError(e instanceof Error ? e.message : 'No se pudo cargar la nave');
     }
-  }, [blId]);
+  }, [opId]);
 
   useEffect(() => {
     load();
@@ -51,12 +63,15 @@ export default function BlTasksPage() {
       if (!needle) return true;
       return (
         v.vin.toUpperCase().includes(needle) ||
-        (v.containerNumber ?? '').toUpperCase().includes(needle)
+        (v.containerNumber ?? '').toUpperCase().includes(needle) ||
+        (v.blNumber ?? '').toUpperCase().includes(needle)
       );
     });
   }, [data, tab, q]);
 
-  async function startFor(v: BlVehicle) {
+  const shown = filtered.slice(0, MAX_RENDER);
+
+  async function startFor(v: NaveVehicle) {
     if (v.blocked || startingVin) return;
     setStartingVin(v.vin);
     setError('');
@@ -81,11 +96,11 @@ export default function BlTasksPage() {
       {data && (
         <div className="input" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span className="muted" style={{ fontSize: 12 }}>B/L</span>
-            <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 15 }}>{data.blNumber}</strong>
+            <span className="muted" style={{ fontSize: 12 }}>Nave</span>
+            <strong style={{ fontSize: 15 }}>{data.shipName}</strong>
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-            {data.shipName} · {data.operationCode}
+            {data.operationCode} · todos los B/L
           </div>
         </div>
       )}
@@ -107,7 +122,7 @@ export default function BlTasksPage() {
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          placeholder="Filtrar por VIN o contenedor"
+          placeholder="Filtrar por VIN, contenedor o B/L"
         />
         <button
           type="button"
@@ -138,62 +153,62 @@ export default function BlTasksPage() {
         <div className="empty">Cargando chasis…</div>
       ) : filtered.length === 0 ? (
         <div className="empty">
-          {tab === 'todo' ? 'No quedan chasis por tarjar en este B/L.' : 'Aún no hay chasis tarjados.'}
+          {tab === 'todo' ? 'No quedan chasis por tarjar en esta nave.' : 'Aún no hay chasis tarjados.'}
         </div>
       ) : (
-        filtered.map((v) =>
-          tab === 'done' ? (
-            <button
-              key={v.vehicleId}
-              type="button"
-              className="task tap"
-              style={{ width: '100%', textAlign: 'left' }}
-              onClick={() => v.currentReportId && router.push(`/tarja/${v.currentReportId}`)}
-            >
-              <div className="grow">
-                <div className="vin">{v.vin}</div>
-                <div className="meta">
-                  {[v.containerNumber, [v.brand, v.model].filter(Boolean).join(' ')]
-                    .filter(Boolean)
-                    .join(' · ') || '—'}
+        <>
+          {shown.map((v) =>
+            tab === 'done' ? (
+              <button
+                key={v.vehicleId}
+                type="button"
+                className="task tap"
+                style={{ width: '100%', textAlign: 'left' }}
+                onClick={() => v.currentReportId && router.push(`/tarja/${v.currentReportId}`)}
+              >
+                <div className="grow">
+                  <div className="vin">{v.vin}</div>
+                  <div className="meta">{vehicleMeta(v)}</div>
+                </div>
+                <span className={`badge ${v.status === 'OBSERVADO' ? 'in_progress' : 'completed'}`}>
+                  {v.status === 'OBSERVADO' ? 'Con daño' : 'Tarjado'}
+                </span>
+              </button>
+            ) : v.blocked ? (
+              <div key={v.vehicleId} className="task" style={{ opacity: 0.55 }}>
+                <div className="grow">
+                  <div className="vin">{v.vin}</div>
+                  <div className="meta">{vehicleMeta(v)}</div>
+                </div>
+                <span className="badge pending">{v.blockedReason}</span>
+              </div>
+            ) : (
+              <div key={v.vehicleId} className="task">
+                <div className="grow">
+                  <div className="vin">{v.vin}</div>
+                  <div className="meta">{vehicleMeta(v)}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="badge pending">Pendiente</span>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={!!startingVin}
+                    onClick={() => startFor(v)}
+                  >
+                    {startingVin === v.vin ? 'Iniciando…' : 'Abrir'}
+                  </button>
                 </div>
               </div>
-              <span className={`badge ${v.status === 'OBSERVADO' ? 'in_progress' : 'completed'}`}>
-                {v.status === 'OBSERVADO' ? 'Con daño' : 'Tarjado'}
-              </span>
-            </button>
-          ) : v.blocked ? (
-            <div key={v.vehicleId} className="task" style={{ opacity: 0.55 }}>
-              <div className="grow">
-                <div className="vin">{v.vin}</div>
-                <div className="meta">{v.containerNumber ?? 'sin contenedor'}</div>
-              </div>
-              <span className="badge pending">{v.blockedReason}</span>
+            ),
+          )}
+          {filtered.length > MAX_RENDER && (
+            <div className="empty" style={{ paddingTop: 16 }}>
+              Mostrando {MAX_RENDER} de {filtered.length} chasis. Usa el buscador o el escáner para
+              ubicar un VIN.
             </div>
-          ) : (
-            <div key={v.vehicleId} className="task">
-              <div className="grow">
-                <div className="vin">{v.vin}</div>
-                <div className="meta">
-                  {[v.containerNumber, [v.brand, v.model].filter(Boolean).join(' ')]
-                    .filter(Boolean)
-                    .join(' · ') || '—'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="badge pending">Pendiente</span>
-                <button
-                  type="button"
-                  className="btn small"
-                  disabled={!!startingVin}
-                  onClick={() => startFor(v)}
-                >
-                  {startingVin === v.vin ? 'Iniciando…' : 'Abrir'}
-                </button>
-              </div>
-            </div>
-          ),
-        )
+          )}
+        </>
       )}
     </Shell>
   );

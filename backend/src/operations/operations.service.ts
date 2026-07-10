@@ -22,9 +22,60 @@ export class OperationsService {
   async findAll() {
     const ops = await this.prisma.operation.findMany({
       orderBy: { id: 'desc' },
-      include: { ship: true, _count: { select: { vehicles: true, bills: true } } },
+      include: {
+        ship: true,
+        _count: { select: { vehicles: true, bills: true } },
+        imports: {
+          orderBy: { id: 'desc' },
+          take: 1,
+          include: { uploadedBy: { select: { name: true, lastname: true } } },
+        },
+      },
     });
-    return ops.map((op) => this.withShipName(op));
+    const ids = ops.map((o) => o.id);
+
+    // Vehículos tarjados (TARJADO/OBSERVADO) y última tarja finalizada, por lote,
+    // en dos consultas agrupadas en vez de N+1. Alimenta el % de avance de las
+    // tarjetas del Administrador (Dashboard y Tareas), como en el sistema USR.
+    const [doneGrouped, lastGrouped] = ids.length
+      ? await Promise.all([
+          this.prisma.vehicle.groupBy({
+            by: ['operationId'],
+            where: { operationId: { in: ids }, status: { in: ['TARJADO', 'OBSERVADO'] } },
+            _count: { status: true },
+          }),
+          this.prisma.tarjaReport.groupBy({
+            by: ['operationId'],
+            where: { operationId: { in: ids }, finishedAt: { not: null } },
+            _max: { finishedAt: true },
+          }),
+        ])
+      : [[], []];
+
+    const doneByOp = new Map<number, number>();
+    for (const g of doneGrouped) doneByOp.set(g.operationId, g._count.status);
+    const lastByOp = new Map<number, Date | null>();
+    for (const g of lastGrouped) lastByOp.set(g.operationId, g._max.finishedAt);
+
+    return ops.map((op) => {
+      const { ship, imports, ...rest } = op;
+      const total = op._count.vehicles;
+      const completed = doneByOp.get(op.id) ?? 0;
+      const imp = imports[0];
+      const uploadedByName = imp?.uploadedBy
+        ? `${imp.uploadedBy.name} ${imp.uploadedBy.lastname}`.trim()
+        : null;
+      return {
+        ...rest,
+        shipName: ship.name,
+        total,
+        completed,
+        pending: total - completed,
+        lastReportAt: lastByOp.get(op.id) ?? null,
+        fileName: imp?.fileName ?? null,
+        uploadedByName,
+      };
+    });
   }
 
   async findOne(id: number) {
