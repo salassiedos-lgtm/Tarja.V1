@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Car, CheckCircle2, Clock } from 'lucide-react';
 import Shell from '@/components/shell';
@@ -54,18 +54,26 @@ export default function TableroPage() {
     [rows, query],
   );
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <Shell title="Cuadro de Tareas" onBack={() => router.push('/inicio')}>
       <div className="searchrow" style={{ marginBottom: 14 }}>
         <input
+          ref={searchInputRef}
           className="input"
           placeholder="Buscar por B/L o nave…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <span className="scanbtn" aria-hidden="true">
+        <button
+          type="button"
+          className="scanbtn"
+          aria-label="Enfocar búsqueda"
+          onClick={() => searchInputRef.current?.focus()}
+        >
           <Search className="h-4 w-4" />
-        </span>
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
