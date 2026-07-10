@@ -26,6 +26,37 @@
   --color-track: #e7ebf1;
 
   --radius-card: 12px;
+
+  /* ---- alias de compatibilidad: paleta anterior (navy/cosco/jade/…) remapeada a USR ----
+     Permite que las pantallas aún no reescritas hereden el estilo USR sin tocarlas. */
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-canvas: #f2f4f8;
+  --color-ink: #1c2430;
+
+  --color-navy-950: #0f4bab;
+  --color-navy-900: #0f4bab;
+  --color-navy-850: #1257bf;
+  --color-navy-800: #1565d8;
+  --color-navy-700: #1565d8;
+  --color-navy-600: #2f79df;
+  --color-navy-200: #b9d2f2;
+  --color-navy-100: #dce9fb;
+  --color-navy-50: #eef4fd;
+
+  --color-cosco-700: #a12a2a;
+  --color-cosco-600: #bd3333;
+  --color-cosco-500: #d23b3b;
+  --color-cosco-400: #e0596a;
+  --color-cosco-50: #fdecec;
+
+  --color-jade-700: #147a5e;
+  --color-jade-600: #1a9d5a;
+  --color-jade-500: #1a9d5a;
+  --color-jade-50: #e4f6ec;
+
+  --color-ochre-600: #e08a00;
+  --color-ochre-50: #fff3df;
 }
 
 :root {
