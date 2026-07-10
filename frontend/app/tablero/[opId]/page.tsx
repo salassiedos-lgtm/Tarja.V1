@@ -229,8 +229,7 @@ export default function NaveTasksPage() {
                     </button>
                   ) : v.reopenSecondsLeft > 0 ? (
                     <button type="button" className="btn small" onClick={() => enterEdit(v)}>
-                      Editar ({Math.floor(v.reopenSecondsLeft / 60)}:
-                      {String(v.reopenSecondsLeft % 60).padStart(2, '0')})
+                      Editar ({Math.floor(v.reopenSecondsLeft / 60)}:{String(v.reopenSecondsLeft % 60).padStart(2, '0')})
                     </button>
                   ) : (
                     <>
