@@ -27,6 +27,9 @@ export interface Operation {
   portDischarge: string | null;
   status: 'ACTIVA' | 'PAUSADA' | 'CERRADA';
   createdAt: string;
+  openedAt: string | null;
+  closedAt: string | null;
+  lastReportAt?: string | null;
   _count?: { vehicles: number; bills: number };
 }
 

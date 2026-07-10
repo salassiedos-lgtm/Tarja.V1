@@ -7,7 +7,6 @@ import Shell from '@/components/shell';
 import {
   listOperations,
   createOperation,
-  setOperationStatus,
   deleteOperation,
   getUser,
   type Operation,
@@ -274,16 +273,12 @@ function NewOperationModal({
 function OperationRow({
   op,
   isAdmin,
-  onStatus,
   onDelete,
-  busy,
   i,
 }: {
   op: Operation;
   isAdmin: boolean;
-  onStatus: (id: number, action: 'activate' | 'pause' | 'close') => void;
   onDelete: (op: Operation) => void;
-  busy: boolean;
   i: number;
 }) {
   const meta = STATUS_META[op.status];
@@ -342,37 +337,9 @@ function OperationRow({
 
       {/* acciones */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {isAdmin && op.status !== 'ACTIVA' && (
-          <button
-            onClick={() => onStatus(op.id, 'activate')}
-            disabled={busy}
-            className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold text-jade-600 transition-colors hover:bg-jade-50 disabled:opacity-50"
-          >
-            Activar
-          </button>
-        )}
-        {isAdmin && op.status === 'ACTIVA' && (
-          <button
-            onClick={() => onStatus(op.id, 'pause')}
-            disabled={busy}
-            className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold text-ochre-600 transition-colors hover:bg-ochre-50 disabled:opacity-50"
-          >
-            Pausar
-          </button>
-        )}
-        {isAdmin && op.status !== 'CERRADA' && (
-          <button
-            onClick={() => onStatus(op.id, 'close')}
-            disabled={busy}
-            className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold text-muted transition-colors hover:bg-canvas hover:text-navy-900 disabled:opacity-50"
-          >
-            Cerrar
-          </button>
-        )}
         {isAdmin && (
           <button
             onClick={() => onDelete(op)}
-            disabled={busy}
             title="Eliminar lote y todo su trabajo"
             className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold text-cosco-600 transition-colors hover:bg-cosco-50 disabled:opacity-50"
           >
@@ -490,7 +457,6 @@ export default function OperationsPage() {
   const [showModal, setShowModal] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'TODAS' | Status>('TODAS');
-  const [busyId, setBusyId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Operation | null>(null);
   const isAdmin = getUser()?.role === 'ADMIN';
 
@@ -507,18 +473,6 @@ export default function OperationsPage() {
   useEffect(() => {
     load();
   }, [load]);
-
-  async function changeStatus(id: number, action: 'activate' | 'pause' | 'close') {
-    setBusyId(id);
-    try {
-      await setOperationStatus(id, action);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado');
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   const stats = useMemo(() => {
     const activas = ops.filter((o) => o.status === 'ACTIVA').length;
@@ -636,9 +590,7 @@ export default function OperationsPage() {
                   key={op.id}
                   op={op}
                   isAdmin={isAdmin}
-                  onStatus={changeStatus}
                   onDelete={setConfirmDelete}
-                  busy={busyId === op.id}
                   i={i}
                 />
               ))}
