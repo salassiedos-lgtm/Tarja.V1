@@ -15,6 +15,7 @@ import {
   Ban,
   CalendarRange,
   Download,
+  FilePen,
   Fingerprint,
   FileDown,
   Flag,
@@ -29,6 +30,7 @@ import {
   ShieldCheck,
   Trash2,
   TriangleAlert,
+  Undo2,
   Users,
   X,
   type LucideIcon,
@@ -65,6 +67,12 @@ const ACTION_META: Record<string, { label: string; icon: LucideIcon; tone: Tone 
   CONFIRM: { label: 'Importación', icon: FileDown, tone: 'pos' },
   VIN_NO_ENCONTRADO: { label: 'VIN no encontrado', icon: AlertTriangle, tone: 'warn' },
   AUTO_RELEASE: { label: 'Liberación automática', icon: RotateCcw, tone: 'warn' },
+  EDIT_START: { label: 'Edición iniciada', icon: Play, tone: 'info' },
+  EDIT_REQUEST: { label: 'Solicitud de edición', icon: FilePen, tone: 'warn' },
+  EDIT_APPROVED: { label: 'Edición autorizada', icon: ShieldCheck, tone: 'pos' },
+  EDIT_REJECTED: { label: 'Edición rechazada', icon: Ban, tone: 'neg' },
+  EDITADA: { label: 'Tarja editada', icon: FilePen, tone: 'info' },
+  EDIT_CANCELED: { label: 'Edición cancelada', icon: Undo2, tone: 'warn' },
 };
 
 const actionMeta = (a: string) =>
