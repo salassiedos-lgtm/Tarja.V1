@@ -15,6 +15,8 @@ import {
   SetDamagesDto,
   StartTarjaDto,
 } from './dto/tarja.dto';
+import { EditRequestDto } from './dto/edit-request.dto';
+import { EditRequestsService } from './edit-requests.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -23,7 +25,10 @@ import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller()
 export class TarjaController {
-  constructor(private readonly service: TarjaService) {}
+  constructor(
+    private readonly service: TarjaService,
+    private readonly editRequests: EditRequestsService,
+  ) {}
 
   @Roles('TARJADOR')
   @Post('tarja/start')
@@ -53,6 +58,16 @@ export class TarjaController {
   @Post('tarja/:id/reopen')
   reopen(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.reopen(id, user.userId);
+  }
+
+  @Roles('TARJADOR')
+  @Post('tarja/:id/edit-request')
+  editRequest(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EditRequestDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.editRequests.create(id, user.userId, dto);
   }
 
   @Get('tarja/:id')
