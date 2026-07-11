@@ -63,6 +63,10 @@ services:
     environment:
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Con NEXT_PUBLIC_API_URL=/api (mismo origen), el server de Next reescribe
+      # /api/* a este destino. Debe ser el nombre de servicio interno del backend,
+      # NO localhost. Sin esto, el login da 500 en producción.
+      BACKEND_URL: ${BACKEND_URL:-http://backend:3000}
     expose:
       - "3000"
 
