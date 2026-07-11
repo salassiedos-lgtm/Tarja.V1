@@ -3,8 +3,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { createWorker } from 'tesseract.js';
 
-// El VIN/chasis es la cadena alfanumérica larga de la imagen.
-const MIN_LEN = 10;
+// El VIN es de 17 caracteres y NUNCA usa las letras I, O ni Q (para no
+// confundirlas con 1 y 0). Con esa lista blanca el OCR se equivoca mucho menos.
+const VIN_CHARS = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789';
+const MIN_LEN = 8;
+
+// El motor (worker + core WASM) y el idioma se sirven desde el propio servidor
+// (public/tesseract). Así el OCR funciona sin depender de un CDN de internet,
+// que es lo que fallaba en la red del puerto y dejaba el OCR sin leer nada.
+const TESS = {
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract/core',
+  langPath: '/tesseract/lang',
+  gzip: false, // eng.traineddata se guarda sin comprimir
+};
 
 function bestCandidate(text: string): string {
   return (
@@ -17,10 +29,17 @@ function bestCandidate(text: string): string {
   );
 }
 
+type Phase = 'cam' | 'engine' | 'scan';
+
 /**
  * OCR en vivo del VIN / serie del chasis con la cámara trasera.
- * Analiza el recuadro central cada ~1.2 s y acepta la lectura cuando
- * dos ciclos seguidos coinciden (una sola lectura de OCR es poco fiable).
+ * Analiza el recuadro central cada ~1.2 s. Muestra siempre la última lectura y
+ * un botón para usarla; además, si dos ciclos seguidos coinciden (o aparece un
+ * VIN completo de 17), la acepta sola.
+ *
+ * Una sola cámara: un único <video> propio y un único stream que se corta en la
+ * limpieza. En dev React (StrictMode) el efecto corre dos veces; el segundo
+ * arranque detiene primero cualquier stream anterior, así nunca hay "dos cámaras".
  */
 export default function OcrScanner({
   onResult,
@@ -32,7 +51,8 @@ export default function OcrScanner({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [err, setErr] = useState('');
-  const [ready, setReady] = useState(false);
+  const [phase, setPhase] = useState<Phase>('cam');
+  const [progress, setProgress] = useState(0);
   const [seen, setSeen] = useState('');
 
   // El padre suele pasar una lambda nueva en cada render; guardarla en una ref
@@ -47,27 +67,45 @@ export default function OcrScanner({
     let timer: ReturnType<typeof setTimeout> | null = null;
     let lastHit = '';
 
-    async function scanLoop() {
-      if (cancelled) return;
+    // Recorta el recuadro central, lo amplía y lo pasa a gris con contraste:
+    // tesseract lee mucho mejor texto grande y con buen contraste.
+    function grabFrame(): HTMLCanvasElement | null {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (video && canvas && worker && video.videoWidth) {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const cw = Math.round(vw * 0.86);
-        const ch = Math.round(vh * 0.3);
-        canvas.width = cw;
-        canvas.height = ch;
-        canvas
-          .getContext('2d')!
-          .drawImage(video, Math.round((vw - cw) / 2), Math.round((vh - ch) / 2), cw, ch, 0, 0, cw, ch);
+      if (!video || !canvas || !video.videoWidth) return null;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const cw = Math.round(vw * 0.86);
+      const ch = Math.round(vh * 0.3);
+      const scale = 1.8; // ampliar ayuda a leer series pequeñas
+      canvas.width = Math.round(cw * scale);
+      canvas.height = Math.round(ch * scale);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+      ctx.drawImage(video, Math.round((vw - cw) / 2), Math.round((vh - ch) / 2), cw, ch, 0, 0, canvas.width, canvas.height);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        // luminancia y realce de contraste alrededor del gris medio
+        let g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        g = (g - 128) * 1.4 + 128;
+        g = g < 0 ? 0 : g > 255 ? 255 : g;
+        d[i] = d[i + 1] = d[i + 2] = g;
+      }
+      ctx.putImageData(img, 0, 0);
+      return canvas;
+    }
+
+    async function scanLoop() {
+      if (cancelled || !worker) return;
+      const canvas = grabFrame();
+      if (canvas) {
         try {
           const { data } = await worker.recognize(canvas);
           if (cancelled) return;
           const hit = bestCandidate(data.text);
           if (hit) {
             setSeen(hit);
-            if (hit === lastHit) {
+            if (hit.length === 17 || hit === lastHit) {
               onResultRef.current(hit);
               return;
             }
@@ -81,34 +119,58 @@ export default function OcrScanner({
     }
 
     async function start() {
+      // 1) Cámara
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
         });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        videoRef.current!.srcObject = stream;
-        await videoRef.current!.play();
-
-        worker = await createWorker('eng');
-        await worker.setParameters({
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-        });
-        if (cancelled) return;
-        setReady(true);
-        scanLoop();
       } catch (e) {
         if (!cancelled) {
           const name = e instanceof Error ? e.name : '';
           setErr(
             name === 'NotAllowedError'
-              ? 'Permiso de cámara denegado.'
-              : 'No se pudo abrir la cámara. En el móvil requiere HTTPS.',
+              ? 'Permiso de cámara denegado. Habilítalo en el navegador.'
+              : name === 'NotReadableError'
+                ? 'La cámara está en uso por otra app. Ciérrala e intenta de nuevo.'
+                : 'No se pudo abrir la cámara. En el móvil requiere HTTPS.',
           );
         }
+        return;
       }
+      if (cancelled || !videoRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      // Corta cualquier stream previo pegado al <video> (StrictMode) antes de reusarlo.
+      const prev = videoRef.current.srcObject as MediaStream | null;
+      if (prev) prev.getTracks().forEach((t) => t.stop());
+      videoRef.current.srcObject = stream;
+      try {
+        await videoRef.current.play();
+      } catch {
+        /* autoplay puede rechazar; el frame igual se captura */
+      }
+
+      // 2) Motor OCR (desde /public/tesseract, sin internet)
+      if (cancelled) return;
+      setPhase('engine');
+      try {
+        worker = await createWorker('eng', 1, {
+          ...TESS,
+          logger: (m) => {
+            if (!cancelled && typeof m.progress === 'number' && m.status.includes('traineddata')) {
+              setProgress(Math.round(m.progress * 100));
+            }
+          },
+        });
+        await worker.setParameters({ tessedit_char_whitelist: VIN_CHARS });
+      } catch {
+        if (!cancelled) setErr('No se pudo cargar el motor OCR. Recarga la página o avisa a soporte.');
+        return;
+      }
+      if (cancelled) return;
+      setPhase('scan');
+      scanLoop();
     }
     start();
 
@@ -134,8 +196,10 @@ export default function OcrScanner({
 
       {!err && (
         <div className="muted" style={{ marginTop: 8 }}>
-          {!ready ? (
+          {phase === 'cam' ? (
             'Iniciando cámara…'
+          ) : phase === 'engine' ? (
+            <>Cargando motor OCR{progress ? ` ${progress}%` : '…'}</>
           ) : seen ? (
             <>
               Leyendo… <strong>{seen}</strong>

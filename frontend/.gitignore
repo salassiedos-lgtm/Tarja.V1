@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# tesseract: motor auto-hospedado (lo regenera scripts/copy-tesseract.mjs en predev/prebuild).
+# El idioma public/tesseract/lang/eng.traineddata SÍ se versiona (no viene en node_modules).
+/public/tesseract/core/
+/public/tesseract/worker.min.js

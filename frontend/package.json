@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-tesseract": "node scripts/copy-tesseract.mjs",
+    "predev": "node scripts/copy-tesseract.mjs",
     "dev": "next dev -p 3001",
+    "prebuild": "node scripts/copy-tesseract.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
